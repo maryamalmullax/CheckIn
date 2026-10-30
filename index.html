@@ -51,9 +51,22 @@
   .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:8px}
   h2{font-size:15px;margin:0 0 10px}
   a{color:var(--brand)}
+  .flash{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;color:#fff;background:#2b59c3}
+  .flash.show{display:flex}
+  .flash.ok{background:#1a7f37}.flash.warn{background:#9a6700}.flash.bad{background:#c4202f}
+  .flash .big{font-size:26px;font-weight:800;line-height:1.25;color:#fff}
+  .flash .name{font-size:38px;font-weight:900;margin:14px 0 6px;color:#fff;word-break:break-word}
+  .flash .meta{font-size:17px;color:#fff;opacity:.92}
+  .flash .shirt{margin-top:18px;font-size:30px;padding:8px 22px;background:#fff;color:#111;border-color:#fff}
+  .flash .pills{justify-content:center}
+  .flash .pill{background:rgba(255,255,255,.2);border-color:transparent;color:#fff}
+  .flash .pill.y{background:#fff;color:#1a7f37}
+  .flash .tap{position:absolute;bottom:28px;left:0;right:0;font-size:14px;opacity:.8}
 </style>
 </head>
 <body>
+
+<div class="flash" id="flash"></div>
 
 <div class="lock" id="lock">
   <div class="card">
@@ -103,13 +116,13 @@
 </div>
 
 <script>
-var S = { pin: '', day: 0, days: 3, busy: false, lastCode: '', lastAt: 0, scanner: null, camOn: false, recent: [], pendingId: '' };
+var S = { pin: '', day: 0, days: 3, busy: false, lastCode: '', lastAt: 0, scanner: null, camOn: false, recent: [], pendingId: '', flashOn: false, flashT: 0 };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
 /* ====== PASTE YOUR WEB APP LINK (ends in /exec) BETWEEN THE QUOTES ====== */
-var API_URL = 'https://script.google.com/macros/s/AKfycbxc5yDMuKa1B7-XYEdXfif9EGN0-MrJHRgg-6dkB4l6lMuTC81Ee_GOluHifSQV99qHOQ/exec';
+var API_URL = '';
 /* ======================================================================== */
 
 var API = (function(){
@@ -206,7 +219,7 @@ function focusCode(){ if (!S.camOn) $('code').focus(); }
 /* ---- check-in ---- */
 function doCheckIn(code){
   code = String(code || '').trim();
-  if (!code || S.busy) return;
+  if (!code || S.busy || S.flashOn) return;
   var now = Date.now();
   if (code === S.lastCode && now - S.lastAt < 4000) return; // same QR still in front of the camera
   S.lastCode = code; S.lastAt = now; S.busy = true;
@@ -237,7 +250,23 @@ function doCheckIn(code){
   });
 }
 
+function showFlash(kind, html){
+  var f = $('flash');
+  clearTimeout(S.flashT);
+  f.className = 'flash show ' + (kind === 'wait' ? '' : kind);
+  f.innerHTML = html + (kind === 'wait' ? '' : '<div class="tap">Tap anywhere to continue</div>');
+  S.flashOn = true;
+  if (kind !== 'wait') S.flashT = setTimeout(hideFlash, kind === 'ok' ? 2200 : 3800);
+}
+function hideFlash(){
+  clearTimeout(S.flashT);
+  $('flash').className = 'flash'; S.flashOn = false;
+  S.lastCode = ''; focusCode();
+}
+$('flash').onclick = function(e){ if (e.target.tagName !== 'BUTTON' && !$('flash').classList.contains('wait')) { if (S.busy) return; hideFlash(); } };
+
 function showResult(kind, html){
+  showFlash(kind, html);
   var el = $('result');
   el.className = 'result show ' + (kind === 'wait' ? '' : kind);
   if (kind === 'wait') { el.style.background = '#fff'; el.style.borderColor = 'var(--line)'; } else { el.style.background = ''; el.style.borderColor = ''; }
@@ -258,6 +287,7 @@ function showPerson(kind, headline, p, when){
 }
 
 function undo(id){
+  hideFlash();
   call('undoCheckIn', S.pin, id, S.day).then(function(){
     showResult('warn', '<div class="big">↩️ Undone: ' + esc(id) + ' (Day ' + S.day + ')</div>');
     S.lastCode = ''; refreshStats();
