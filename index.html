@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2328; --muted:#5b6470; --line:#d9dde3;
+    --brand:#2b59c3; --ok:#1a7f37; --okbg:#dafbe1; --warn:#9a6700; --warnbg:#fff3c4;
+    --bad:#c4202f; --badbg:#ffe1e3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:560px;margin:0 auto;padding:12px 16px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  h1{font-size:18px;margin:0}
+  .muted{color:var(--muted);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .days{display:flex;gap:8px}
+  .days button{flex:1;padding:12px 0;font-size:16px;font-weight:600;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .days button.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .stats{display:flex;justify-content:space-between;margin-top:10px;font-size:14px}
+  .stats b{font-size:18px}
+  .row{display:flex;gap:8px}
+  input{flex:1;font-size:18px;padding:12px;border:2px solid var(--line);border-radius:10px;min-width:0}
+  input:focus{outline:none;border-color:var(--brand)}
+  .btn{padding:12px 16px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:var(--brand);color:#fff;cursor:pointer;white-space:nowrap}
+  .btn.ghost{background:#fff;color:var(--brand);border:2px solid var(--brand)}
+  .btn.small{padding:8px 12px;font-size:14px}
+  #reader{width:100%;border-radius:12px;overflow:hidden;margin-top:10px}
+  #reader video{border-radius:12px}
+  .result{border-radius:14px;padding:18px;margin-bottom:12px;border:2px solid transparent;display:none}
+  .result.show{display:block}
+  .result.ok{background:var(--okbg);border-color:var(--ok)}
+  .result.warn{background:var(--warnbg);border-color:var(--warn)}
+  .result.bad{background:var(--badbg);border-color:var(--bad)}
+  .result .big{font-size:22px;font-weight:700;margin-bottom:4px}
+  .result .name{font-size:26px;font-weight:800;margin:6px 0 2px}
+  .result .meta{font-size:15px;color:#333}
+  .shirt{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#fff;border:2px solid #333;font-weight:800;font-size:20px}
+  .pills{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+  .pill{padding:4px 10px;border-radius:999px;font-size:13px;background:#fff;border:1px solid var(--line)}
+  .pill.y{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .list .item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .list .item:last-child{border-bottom:0}
+  .list .who{min-width:0}
+  .list .who div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lock{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .lock .card{width:100%;max-width:360px;text-align:center}
+  .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:8px}
+  h2{font-size:15px;margin:0 0 10px}
+  a{color:var(--brand)}
+</style>
+</head>
+<body>
+
+<div class="lock" id="lock">
+  <div class="card">
+    <h1 id="lockTitle">Check-in</h1>
+    <p class="muted">For event staff only. Enter the staff PIN.</p>
+    <p class="muted" id="partNote" style="display:none">Participant? You don't need this page. Just show your QR code at the registration desk. 🙂</p>
+    <div class="row"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN"><button class="btn" id="pinBtn">Start</button></div>
+    <div class="err" id="pinErr"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div><h1 id="title">Check-in</h1><div class="muted" id="sub">Scan a QR code or type an ID</div></div>
+    <button class="btn ghost small" id="lockBtn" title="Lock this device">Lock</button>
+  </header>
+
+  <div class="card">
+    <div class="days" id="days"></div>
+    <div class="stats"><span>Checked in today: <b id="today">–</b></span><span>Registered: <b id="reg">–</b></span></div>
+  </div>
+
+  <div class="result" id="result"></div>
+
+  <div class="card">
+    <div class="row">
+      <input id="code" autocomplete="off" autocapitalize="characters" placeholder="Scan or type ID, then Enter">
+      <button class="btn" id="goBtn">Check in</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost" id="camBtn" style="flex:1">📷 Use camera</button>
+    </div>
+    <div id="reader"></div>
+    <div class="err" id="camErr"></div>
+  </div>
+
+  <div class="card">
+    <h2>Lost their QR? Search by name, email or organization</h2>
+    <div class="row"><input id="q" placeholder="e.g. Fatima" autocomplete="off"><button class="btn ghost" id="qBtn">Search</button></div>
+    <div class="list" id="hits"></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent on this device</h2>
+    <div class="list" id="recent"><div class="muted">Nothing yet</div></div>
+  </div>
+</div>
+
+<script>
+var S = { pin: '', day: 0, days: 3, busy: false, lastCode: '', lastAt: 0, scanner: null, camOn: false, recent: [], pendingId: '' };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
+/* ====== PASTE YOUR WEB APP LINK (ends in /exec) BETWEEN THE QUOTES ====== */
+var API_URL = 'https://script.google.com/macros/s/AKfycbxc5yDMuKa1B7-XYEdXfif9EGN0-MrJHRgg-6dkB4l6lMuTC81Ee_GOluHifSQV99qHOQ/exec';
+/* ======================================================================== */
+
+var API = (function(){
+  var q = new URLSearchParams(location.search).get('api');
+  if (q) store('ci_api', q);
+  return API_URL || q || store('ci_api') || '';
+})();
+var MAP = {
+  getConfig: ['config'], verifyPin: ['pin', 'pin'], getStats: ['stats', 'pin'],
+  checkIn: ['checkin', 'pin', 'id', 'day'], undoCheckIn: ['undo', 'pin', 'id', 'day'], searchPeople: ['search', 'pin', 'q']
+};
+function call(fn){
+  var args = Array.prototype.slice.call(arguments, 1), m = MAP[fn];
+  var qs = 'api=' + m[0];
+  m.slice(1).forEach(function(k, i){ qs += '&' + k + '=' + encodeURIComponent(args[i] == null ? '' : args[i]); });
+  qs += '&t=' + Date.now();
+  return fetch(API + '?' + qs, { redirect: 'follow', credentials: 'omit' })
+    .then(function(r){ return r.json(); })
+    .catch(function(){ throw new Error('No connection to the Sheet. Check the internet and try again.'); })
+    .then(function(j){ if (!j.ok) throw new Error(j.error || 'Error'); return j.data; });
+}
+
+/* ---- sounds ---- */
+var AC = null;
+function beep(ok){
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    var notes = ok === 'ok' ? [880, 1320] : ok === 'warn' ? [600, 600] : [300, 220];
+    notes.forEach(function(f, i){
+      var o = AC.createOscillator(), g = AC.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(AC.destination);
+      var t = AC.currentTime + i * 0.13;
+      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.start(t); o.stop(t + 0.13);
+    });
+    if (navigator.vibrate) navigator.vibrate(ok === 'ok' ? 60 : [80, 60, 80]);
+  } catch(e) {}
+}
+
+/* ---- setup ---- */
+call('getConfig').then(function(cfg){
+  S.days = cfg.days;
+  $('title').textContent = cfg.eventName;
+  $('lockTitle').textContent = cfg.eventName;
+  document.title = 'Check-in – ' + cfg.eventName;
+  var saved = Number(store('ci_day') || 0);
+  S.day = cfg.today || saved || 1;
+  drawDays();
+  // Opened from a QR link (iPhone Camera app)? → ?id=EVT-0001
+  var id = new URLSearchParams(location.search).get('id');
+  if (id) { S.pendingId = String(id); $('partNote').style.display = 'block'; }
+  var p = store('ci_pin');
+  if (p) unlock(p, true);
+}).catch(showFatal);
+if (!API) showFatal(new Error('Paste your Web app link into API_URL at the top of this file.'));
+
+function drawDays(){
+  var h = '';
+  for (var d = 1; d <= S.days; d++) h += '<button data-d="' + d + '" class="' + (d === S.day ? 'on' : '') + '">Day ' + d + '</button>';
+  $('days').innerHTML = h;
+  Array.prototype.forEach.call($('days').children, function(b){
+    b.onclick = function(){ S.day = Number(b.getAttribute('data-d')); store('ci_day', String(S.day)); drawDays(); refreshStats(); focusCode(); };
+  });
+}
+
+function unlock(pin, silent){
+  $('pinErr').textContent = '';
+  call('verifyPin', pin).then(function(stats){
+    S.pin = pin; store('ci_pin', pin);
+    $('lock').style.display = 'none';
+    showStats(stats);
+    if (S.pendingId) { var id = S.pendingId; S.pendingId = ''; doCheckIn(id); }
+    else focusCode();
+    if (store('ci_cam') === '1') startCam();
+  }).catch(function(e){
+    store('ci_pin', null);
+    if (!silent) $('pinErr').textContent = e.message || 'Wrong PIN';
+  });
+}
+$('pinBtn').onclick = function(){ unlock($('pin').value.trim()); };
+$('pin').onkeydown = function(e){ if (e.key === 'Enter') unlock($('pin').value.trim()); };
+$('lockBtn').onclick = function(){ store('ci_pin', null); S.pin = ''; stopCam(); $('pin').value = ''; $('lock').style.display = 'flex'; };
+
+function showStats(s){
+  if (!s) return;
+  $('reg').textContent = s.registered;
+  $('today').textContent = s.days[S.day - 1] != null ? s.days[S.day - 1] : '–';
+}
+function refreshStats(){ if (S.pin) call('getStats', S.pin).then(showStats).catch(function(){}); }
+setInterval(refreshStats, 30000);
+
+function focusCode(){ if (!S.camOn) $('code').focus(); }
+
+/* ---- check-in ---- */
+function doCheckIn(code){
+  code = String(code || '').trim();
+  if (!code || S.busy) return;
+  var now = Date.now();
+  if (code === S.lastCode && now - S.lastAt < 4000) return; // same QR still in front of the camera
+  S.lastCode = code; S.lastAt = now; S.busy = true;
+  showResult('wait', '<div class="big">Checking ' + esc(code) + '…</div>');
+  call('checkIn', S.pin, code, S.day).then(function(r){
+    S.busy = false; $('code').value = '';
+    if (r.day && r.day !== S.day) { S.day = r.day; store('ci_day', String(S.day)); drawDays(); }
+    if (r.stats) showStats(r.stats);
+    if (r.status === 'ok') {
+      beep('ok'); showPerson('ok', '✅ Welcome! Day ' + S.day + ' checked in', r.person, 'at ' + r.at);
+      addRecent(r.person, 'Day ' + S.day + ' ✓ ' + r.at);
+    } else if (r.status === 'already') {
+      beep('bad'); showPerson('bad', '⛔ Code already used today (Day ' + S.day + '). Do not admit again.', r.person, 'first used at ' + r.at);
+      addRecent(r.person, '⛔ 2nd use, Day ' + S.day);
+    } else if (r.status === 'notallowed') {
+      beep('bad'); showPerson('bad', '⛔ Not on the participant list. No entry.', r.person, 'removed from the allowed list');
+    } else if (r.status === 'notday') {
+      beep('bad'); showResult('bad', '<div class="big">📅 Today is not an event day</div><div class="meta">Check-in only works on the dates set in DAY_DATES.</div>');
+    } else {
+      beep('bad'); showResult('bad', '<div class="big">❌ Not found: ' + esc(r.id) + '</div><div class="meta">Search by name below, or send them to the walk-in lane to register.</div>');
+    }
+    focusCode();
+  }).catch(function(e){
+    S.busy = false; beep('bad');
+    if (/PIN/.test(e.message || '')) { $('lockBtn').click(); return; }
+    showResult('bad', '<div class="big">⚠️ Couldn\'t save</div><div class="meta">' + esc(e.message || e) + '<br>Check the internet connection and try again.</div>');
+    S.lastCode = '';
+  });
+}
+
+function showResult(kind, html){
+  var el = $('result');
+  el.className = 'result show ' + (kind === 'wait' ? '' : kind);
+  if (kind === 'wait') { el.style.background = '#fff'; el.style.borderColor = 'var(--line)'; } else { el.style.background = ''; el.style.borderColor = ''; }
+  el.innerHTML = html;
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function showPerson(kind, headline, p, when){
+  var pills = p.days.map(function(on, i){ return '<span class="pill ' + (on ? 'y' : '') + '">Day ' + (i + 1) + (on ? ' ✓' : '') + '</span>'; }).join('');
+  var meta = [p.role, p.org].filter(Boolean).map(esc).join(' · ');
+  showResult(kind,
+    '<div class="big">' + esc(headline) + '</div>' +
+    '<div class="name">' + esc(p.name) + '</div>' +
+    '<div class="meta">' + esc(p.id) + (meta ? ' · ' + meta : '') + ' · ' + esc(when) + '</div>' +
+    (p.shirt ? '<div class="shirt">👕 ' + esc(p.shirt) + '</div>' : '') +
+    '<div class="pills">' + pills + '</div>' +
+    (kind === 'ok' ? '<div style="margin-top:12px"><button class="btn ghost small" onclick="undo(\'' + esc(p.id) + '\')">Undo this check-in</button></div>' : ''));
+}
+
+function undo(id){
+  call('undoCheckIn', S.pin, id, S.day).then(function(){
+    showResult('warn', '<div class="big">↩️ Undone: ' + esc(id) + ' (Day ' + S.day + ')</div>');
+    S.lastCode = ''; refreshStats();
+  }).catch(function(e){ showResult('bad', '<div class="big">' + esc(e.message || e) + '</div>'); });
+}
+
+$('goBtn').onclick = function(){ doCheckIn($('code').value); };
+$('code').onkeydown = function(e){ if (e.key === 'Enter') { e.preventDefault(); doCheckIn($('code').value); } };
+
+/* ---- search ---- */
+function search(){
+  var q = $('q').value.trim();
+  if (q.length < 2) { $('hits').innerHTML = '<div class="muted">Type at least 2 letters</div>'; return; }
+  $('hits').innerHTML = '<div class="muted">Searching…</div>';
+  call('searchPeople', S.pin, q).then(function(list){
+    if (!list.length) { $('hits').innerHTML = '<div class="muted">No match. Walk-in? Ask them to fill the form at the desk.</div>'; return; }
+    $('hits').innerHTML = list.map(function(p){
+      var done = p.days[S.day - 1];
+      return '<div class="item"><div class="who"><div><b>' + esc(p.name) + '</b></div><div class="muted">' + esc(p.id) + ' · ' + esc([p.role, p.org].filter(Boolean).join(' · ')) + '</div></div>' +
+        (done ? '<span class="pill y">Day ' + S.day + ' ✓</span>' : '<button class="btn small" onclick="pick(\'' + esc(p.id) + '\')">Check in</button>') + '</div>';
+    }).join('');
+  }).catch(function(e){ $('hits').innerHTML = '<div class="err">' + esc(e.message || e) + '</div>'; });
+}
+function pick(id){ S.lastCode = ''; doCheckIn(id); setTimeout(search, 1200); }
+$('qBtn').onclick = search;
+$('q').onkeydown = function(e){ if (e.key === 'Enter') search(); };
+
+/* ---- recent ---- */
+function addRecent(p, label){
+  S.recent.unshift({ name: p.name, id: p.id, label: label });
+  S.recent = S.recent.slice(0, 8);
+  $('recent').innerHTML = S.recent.map(function(r){
+    return '<div class="item"><div class="who"><div><b>' + esc(r.name) + '</b></div><div class="muted">' + esc(r.id) + '</div></div><span class="muted">' + esc(r.label) + '</span></div>';
+  }).join('');
+}
+
+/* ---- camera ---- */
+function startCam(){
+  $('camErr').textContent = '';
+  if (typeof Html5Qrcode === 'undefined') { $('camErr').textContent = 'Camera library did not load. Type IDs or use a USB/Bluetooth scanner.'; return; }
+  S.scanner = S.scanner || new Html5Qrcode('reader');
+  S.scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } },
+    function(text){ doCheckIn(text); }, function(){})
+  .then(function(){ S.camOn = true; store('ci_cam', '1'); $('camBtn').textContent = '⏹ Stop camera'; })
+  .catch(function(e){
+    S.camOn = false;
+    $('camErr').textContent = 'Camera not available here (' + (e && e.message ? e.message : e) + '). Allow camera access, or type IDs / use a barcode scanner.';
+  });
+}
+function stopCam(){
+  if (S.scanner && S.camOn) S.scanner.stop().catch(function(){});
+  S.camOn = false; store('ci_cam', '0'); $('camBtn').textContent = '📷 Use camera';
+}
+$('camBtn').onclick = function(){ S.camOn ? stopCam() : startCam(); };
+
+function showFatal(e){ document.body.innerHTML = '<div class="wrap"><div class="card"><h1>Something went wrong</h1><p>' + esc(e.message || e) + '</p></div></div>'; }
+</script>
+</body>
+</html>
