@@ -1,924 +1,354 @@
-// EVENT CHECK-IN KIT  —  Google Sheets + Apps Script
-// --------------------------------------------------
-// Paste this whole file into Extensions → Apps Script → Code.gs
-// (in the Google Sheet that your Google Form sends responses to).
-// Also add two HTML files named exactly: Scanner  and  Badges
-// What it does:
-// - Gives every registrant an ID (EVT-0001, EVT-0002, …)
-// - Emails each person their QR code automatically
-// - Serves a scanner web page that records Day 1 / Day 2 / Day 3 attendance
-// - Serves a printable badges page (8 badges per A4 page, sorted A–Z)
- 
-// ============================ EDIT THESE ============================
-const CONFIG = {
-  EVENT_NAME: 'NASA Space Apps Challenge – Kuwait 2026',          // shown in emails, scanner and badges
-  EVENT_DETAILS: 'AUK · 14–15 Nov 2026', // one line in the email
-  RESPONSES_SHEET: 'Form Responses 1',   // the tab your form writes to
-  ID_PREFIX: 'EVT',                      // IDs look like EVT-0001
-  STAFF_PIN: '112026',                     // CHANGE THIS — staff type it once on the scanner/badges pages
-  DAYS: 3,                               // number of event days
-  // What each day is called on the scanner and in emails (Sheet columns stay "Day 1/2/3 check-in")
-  DAY_NAMES: ['Orientation', 'Day 1', 'Day 2'],
- 
-  // Optional: the date of each day (YYYY-MM-DD) so the scanner picks today's day by itself.
-  // Leave [] to choose the day manually on the scanner.
-  DAY_DATES: [],                         // your dates: ['2026-11-12', '2026-11-14', '2026-11-15']
- 
-  // The titles of your form questions. Matching ignores upper/lower case,
-  // and a title that merely CONTAINS these words also matches.
-  FIELDS: {
-    name:  'Full name',
-    email: 'Email',
-    org:   'Organization',
-    role:  'Role',
-    shirt: 'T-shirt size',
-    phone: 'Phone'
-  },
- 
-  EMAIL_SUBJECT: 'Your entry QR code – {EVENT}',
-  REPLY_TO: '',                          // optional: an address people can reply to
-  DAILY_SEND_HOUR: 9,                    // when the daily "send what's left" run happens (script time zone)
- 
-  // Paste your scanner Web app URL here (Deploy → Manage deployments → copy the URL ending in /exec).
-  // When filled in, every QR code becomes a link, so committee iPhones can scan with the normal Camera app.
-  SCANNER_URL: 'https://script.google.com/macros/s/AKfycbxc5yDMuKa1B7-XYEdXfif9EGN0-MrJHRgg-6dkB4l6lMuTC81Ee_GOluHifSQV99qHOQ/exec',
- 
-  // ---- Restrictions ----
-  // true = only emails listed in the "Allowed list" tab get an ID + QR code and can be checked in.
-  RESTRICT_TO_LIST: true,
-  ALLOWED_SHEET: 'Allowed list',
-  // true = people not on the list get one polite "we couldn't find you on the list" email.
-  TELL_NOT_ON_LIST: true,
- 
-  // true = the form itself refuses an email that's already registered (or not on the list)
-  //        and a phone number that's already registered, with a red message under the box.
-  FORM_CHECKS: true,
-  PHONE_DIGITS: 8,   // phone numbers are compared by their last 8 digits (Kuwait), so +965 / spaces don't matter
-  // The official Kuwait page on the NASA Space Apps website
-  NASA_URL: 'https://www.spaceappschallenge.org/2026/local-events/kuwait/',
-  // Hint shown under the Email question
-  EMAIL_HELP: 'Use the same email you registered with on the official NASA Space Apps website (https://www.spaceappschallenge.org/2026/local-events/kuwait/). Your QR entry code will be sent to this email.',
-  // Red message when the email is refused
-  MSG_EMAIL_BLOCKED: 'This email is not registered for NASA Space Apps Kuwait or has already been used. Please use your NASA Space Apps registration email, in lowercase.',
-  MSG_PHONE_BLOCKED: 'This phone number is already registered.'
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2328; --muted:#5b6470; --line:#d9dde3;
+    --brand:#2b59c3; --ok:#1a7f37; --okbg:#dafbe1; --warn:#9a6700; --warnbg:#fff3c4;
+    --bad:#c4202f; --badbg:#ffe1e3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:560px;margin:0 auto;padding:12px 16px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  h1{font-size:18px;margin:0}
+  .muted{color:var(--muted);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .days{display:flex;gap:8px}
+  .days button{flex:1;padding:12px 0;font-size:16px;font-weight:600;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .days button.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .stats{display:flex;justify-content:space-between;margin-top:10px;font-size:14px}
+  .stats b{font-size:18px}
+  .row{display:flex;gap:8px}
+  input{flex:1;font-size:18px;padding:12px;border:2px solid var(--line);border-radius:10px;min-width:0}
+  input:focus{outline:none;border-color:var(--brand)}
+  .btn{padding:12px 16px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:var(--brand);color:#fff;cursor:pointer;white-space:nowrap}
+  .btn.ghost{background:#fff;color:var(--brand);border:2px solid var(--brand)}
+  .btn.small{padding:8px 12px;font-size:14px}
+  #reader{width:100%;border-radius:12px;overflow:hidden;margin-top:10px}
+  #reader video{border-radius:12px}
+  .result{border-radius:14px;padding:18px;margin-bottom:12px;border:2px solid transparent;display:none}
+  .result.show{display:block}
+  .result.ok{background:var(--okbg);border-color:var(--ok)}
+  .result.warn{background:var(--warnbg);border-color:var(--warn)}
+  .result.bad{background:var(--badbg);border-color:var(--bad)}
+  .result .big{font-size:22px;font-weight:700;margin-bottom:4px}
+  .result .name{font-size:26px;font-weight:800;margin:6px 0 2px}
+  .result .meta{font-size:15px;color:#333}
+  .shirt{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#fff;border:2px solid #333;font-weight:800;font-size:20px}
+  .pills{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+  .pill{padding:4px 10px;border-radius:999px;font-size:13px;background:#fff;border:1px solid var(--line)}
+  .pill.y{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .list .item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .list .item:last-child{border-bottom:0}
+  .list .who{min-width:0}
+  .list .who div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lock{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .lock .card{width:100%;max-width:360px;text-align:center}
+  .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:8px}
+  h2{font-size:15px;margin:0 0 10px}
+  a{color:var(--brand)}
+  .flash{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;color:#fff;background:#2b59c3}
+  .flash.show{display:flex}
+  .flash.ok{background:#1a7f37}.flash.warn{background:#9a6700}.flash.bad{background:#c4202f}
+  .flash .big{font-size:26px;font-weight:800;line-height:1.25;color:#fff}
+  .flash .name{font-size:38px;font-weight:900;margin:14px 0 6px;color:#fff;word-break:break-word}
+  .flash .meta{font-size:17px;color:#fff;opacity:.92}
+  .flash .shirt{margin-top:18px;font-size:30px;padding:8px 22px;background:#fff;color:#111;border-color:#fff}
+  .flash .pills{justify-content:center}
+  .flash .pill{background:rgba(255,255,255,.2);border-color:transparent;color:#fff}
+  .flash .pill.y{background:#fff;color:#1a7f37}
+  .flash .tap{position:absolute;bottom:28px;left:0;right:0;font-size:14px;opacity:.8}
+</style>
+</head>
+<body>
+
+<div class="flash" id="flash"></div>
+
+<div class="lock" id="lock">
+  <div class="card">
+    <h1 id="lockTitle">Check-in</h1>
+    <p class="muted">For event staff only. Enter the staff PIN.</p>
+    <p class="muted" id="partNote" style="display:none">Participant? You don't need this page. Just show your QR code at the registration desk. 🙂</p>
+    <div class="row"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN"><button class="btn" id="pinBtn">Start</button></div>
+    <div class="err" id="pinErr"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div><h1 id="title">Check-in</h1><div class="muted" id="sub">Scan a QR code or type an ID</div></div>
+    <button class="btn ghost small" id="lockBtn" title="Lock this device">Lock</button>
+  </header>
+
+  <div class="card">
+    <div class="days" id="days"></div>
+    <div class="stats"><span>Checked in today: <b id="today">–</b></span><span>Registered: <b id="reg">–</b></span></div>
+  </div>
+
+  <div class="result" id="result"></div>
+
+  <div class="card">
+    <div class="row">
+      <input id="code" autocomplete="off" autocapitalize="characters" placeholder="Scan or type ID, then Enter">
+      <button class="btn" id="goBtn">Check in</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost" id="camBtn" style="flex:1">📷 Use camera</button>
+    </div>
+    <div id="reader"></div>
+    <div class="err" id="camErr"></div>
+  </div>
+
+  <div class="card">
+    <h2>Lost their QR? Search by name, email or organization</h2>
+    <div class="row"><input id="q" placeholder="e.g. Fatima" autocomplete="off"><button class="btn ghost" id="qBtn">Search</button></div>
+    <div class="list" id="hits"></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent on this device</h2>
+    <div class="list" id="recent"><div class="muted">Nothing yet</div></div>
+  </div>
+</div>
+
+<script>
+var S = { pin: '', day: 0, days: 3, names: [], busy: false, lastCode: '', lastAt: 0, scanner: null, camOn: false, recent: [], pendingId: '', flashOn: false, flashT: 0 };
+
+function dn(d){ return S.names[d - 1] || ('Day ' + d); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
+/* ====== PASTE YOUR WEB APP LINK (ends in /exec) BETWEEN THE QUOTES ====== */
+var API_URL = 'https://script.google.com/macros/s/AKfycbxc5yDMuKa1B7-XYEdXfif9EGN0-MrJHRgg-6dkB4l6lMuTC81Ee_GOluHifSQV99qHOQ/exec';
+/* ======================================================================== */
+
+var API = (function(){
+  var q = new URLSearchParams(location.search).get('api');
+  if (q) store('ci_api', q);
+  return API_URL || q || store('ci_api') || '';
+})();
+var MAP = {
+  getConfig: ['config'], verifyPin: ['pin', 'pin'], getStats: ['stats', 'pin'],
+  checkIn: ['checkin', 'pin', 'id', 'day'], undoCheckIn: ['undo', 'pin', 'id', 'day'], searchPeople: ['search', 'pin', 'q']
 };
-// ====================================================================
- 
-// ======================= FORM TEXT (edit freely) =======================
-// "🎟️ Check-in → Apply event text to the form" copies this into your Google Form.
-const FORM_TEXT = {
-  TITLE: 'NASA Space Apps Challenge – Kuwait 2026',
- 
-  DESCRIPTION: [
-    'Register for NASA Space Apps Challenge – Kuwait 2026.',
-    '',
-    'Only for participants registered for Kuwait on the official NASA Space Apps website. Please use the same email you used there.',
-    '',
-    'After you submit, your personal QR entry code will be emailed to you. Show it at the registration desk each day.'
-  ].join('\n'),
- 
-  CONFIRMATION: 'You’re registered for NASA Space Apps Challenge Kuwait 2026! 🚀\n\n' +
-    'Your personal QR entry code will be sent to your email.\n\n' +
-    'If you don’t receive it within a few minutes, please check your spam folder. ' +
-    'During busy periods, it may arrive the next morning.\n\n' +
-    'See you there. Let’s build, collaborate, and innovate together! 🌍'
-};
-// ======================================================================
- 
-const COL_ID = 'ID';
-const COL_STATUS = 'Email status';
-function dayHeader_(d) { return 'Day ' + d + ' check-in'; }
-function allDayNames_() {
-  const n = [];
-  for (let d = 1; d <= CONFIG.DAYS; d++) n.push(dayName_(d));
-  return n.length > 1 ? n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1] : n.join('');
+function call(fn){
+  var args = Array.prototype.slice.call(arguments, 1), m = MAP[fn];
+  var qs = 'api=' + m[0];
+  m.slice(1).forEach(function(k, i){ qs += '&' + k + '=' + encodeURIComponent(args[i] == null ? '' : args[i]); });
+  qs += '&t=' + Date.now();
+  return fetch(API + '?' + qs, { redirect: 'follow', credentials: 'omit' })
+    .then(function(r){ return r.json(); })
+    .catch(function(){ throw new Error('No connection to the Sheet. Check the internet and try again.'); })
+    .then(function(j){ if (!j.ok) throw new Error(j.error || 'Error'); return j.data; });
 }
-function dayName_(d) { return (CONFIG.DAY_NAMES && CONFIG.DAY_NAMES[d - 1]) || ('Day ' + d); }
- 
-// ---------------------------- Sheet menu ----------------------------
- 
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('🎟️ Check-in')
-    .addItem('0) Create the registration form', 'createRegistrationForm')
-    .addItem('1) Set up (run once)', 'setup')
-    .addItem('Apply event text to the form', 'applyEventText')
-    .addSeparator()
-    .addItem('Send a test email to myself', 'sendTestEmail')
-    .addItem('Re-check list & send pending QR emails', 'menuSendPending')
-    .addItem('Resend QR to selected row(s)', 'resendSelected')
-    .addItem('Assign missing IDs', 'menuAssignIds')
-    .addItem('Update form checks (after editing the Allowed list)', 'menuRefreshFormChecks')
-    .addSeparator()
-    .addItem('Show attendance counts', 'menuShowStats')
-    .addToUi();
-}
- 
-function createRegistrationForm() {
-  const ui = SpreadsheetApp.getUi();
-  const ss = SpreadsheetApp.getActive();
-  const linked = ss.getSheets().find(function (s) { try { return !!s.getFormUrl(); } catch (e) { return false; } });
-  if (linked) {
-    ui.alert('This Sheet is already linked to a form (tab "' + linked.getName() + '").\n\n' +
-      'Form editor: ' + linked.getFormUrl() + '\n\nRun "1) Set up" if you haven\'t yet.');
-    return;
-  }
- 
-  const form = FormApp.create(FORM_TEXT.TITLE);
-  writeEventText_(form);
-  form.setCollectEmail(false);
-  form.setAllowResponseEdits(false);
-  form.setLimitOneResponsePerUser(false);
-  form.setProgressBar(false);
- 
-  const req = function (item) { return item.setRequired(true); };
- 
-  req(form.addTextItem().setTitle(CONFIG.FIELDS.name));
-  req(form.addTextItem().setTitle(CONFIG.FIELDS.email)
-    .setHelpText(CONFIG.EMAIL_HELP || 'Your QR entry code will be sent here')
-    .setValidation(FormApp.createTextValidation().requireTextIsEmail()
-      .setHelpText('Please enter a valid email address').build()));
-  req(form.addTextItem().setTitle('Phone (WhatsApp)'));
-  req(form.addTextItem().setTitle('Age')
-    .setValidation(FormApp.createTextValidation().requireNumberBetween(5, 99)
-      .setHelpText('Please enter your age as a number').build()));
-  req(form.addMultipleChoiceItem().setTitle('Gender').setChoiceValues(['Male', 'Female']));
-  req(form.addTextItem().setTitle(CONFIG.FIELDS.org).setHelpText('School, university or company'));
-  req(form.addMultipleChoiceItem().setTitle(CONFIG.FIELDS.role)
-    .setChoiceValues(['School student', 'University student', 'School teacher', 'University faculty', 'Employee', 'Entrepreneur / Freelancer']).showOtherOption(true));
-  req(form.addMultipleChoiceItem().setTitle(CONFIG.FIELDS.shirt)
-    .setChoiceValues(['S', 'M', 'L', 'XL']));
-  form.addMultipleChoiceItem().setTitle('How did you hear about us?')
-    .setChoiceValues(['Instagram', 'X (Twitter)', 'WhatsApp', 'Email', 'Friend or colleague', 'School / university'])
-    .showOtherOption(true);
- 
-  form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
-  try { form.setPublished(true); } catch (e) { /* older forms are published by default */ }
-  form.setAcceptingResponses(true);
- 
-  SpreadsheetApp.flush();
-  Utilities.sleep(3000); // give Google a moment to add the responses tab
- 
-  ui.alert('Form created ✅\n\n' +
-    'Link to SEND to participants:\n' + form.getPublishedUrl() + '\n\n' +
-    'Link to EDIT the form:\n' + form.getEditUrl() + '\n\n' +
-    'It\'s also in your Google Drive. Next: click OK, then run "1) Set up (run once)".');
-}
- 
-// Copies FORM_TEXT into the linked form. Questions and their answer rules are not touched.
-function applyEventText() {
-  const ui = SpreadsheetApp.getUi();
-  let url = null;
-  try { url = sheet_().getFormUrl(); } catch (e) { /* not linked */ }
-  if (!url) { ui.alert('No form is linked to this Sheet yet. Run "0) Create the registration form" first.'); return; }
-  const form = FormApp.openByUrl(url);
-  writeEventText_(form);
-  ui.alert('Event text applied ✅\n\nTitle, description and confirmation message are updated.\n\n' +
-    'Open the form editor to add the header image and colours:\n' + form.getEditUrl());
-}
- 
-function writeEventText_(form) {
-  form.setTitle(FORM_TEXT.TITLE);
-  if (CONFIG.EVENT_DETAILS && !/Venue name/.test(CONFIG.EVENT_DETAILS)) {
-    form.setDescription('📍 ' + CONFIG.EVENT_DETAILS + '\n\n' + FORM_TEXT.DESCRIPTION);
-  } else {
-    form.setDescription(FORM_TEXT.DESCRIPTION);
-  }
-  form.setConfirmationMessage(FORM_TEXT.CONFIRMATION);
-}
- 
-function setup() {
-  const ui = SpreadsheetApp.getUi();
-  const ss = SpreadsheetApp.getActive();
-  PropertiesService.getScriptProperties().setProperty('SS_ID', ss.getId());
- 
-  const sh = sheet_();
-  const have = headers_(sh);
-  const needed = [COL_ID, COL_STATUS];
-  for (let d = 1; d <= CONFIG.DAYS; d++) needed.push(dayHeader_(d));
-  needed.forEach(function (name) {
-    if (have.indexOf(name) === -1) {
-      const col = sh.getLastColumn() + 1;
-      sh.getRange(1, col).setValue(name).setFontWeight('bold').setBackground('#e8f0fe');
-      have.push(name);
-    }
-  });
- 
-  const c = cols_(sh);
-  const problems = [];
-  if (c.name === -1) problems.push('name ("' + CONFIG.FIELDS.name + '")');
-  if (c.email === -1) problems.push('email ("' + CONFIG.FIELDS.email + '")');
-  if (problems.length) {
-    ui.alert('Could not find the column for: ' + problems.join(', ') +
-      '.\n\nCheck CONFIG.FIELDS matches your form question titles, then run Set up again.');
-    return;
-  }
- 
-  // Day columns show date + time
-  c.days.forEach(function (ci) {
-    if (ci > -1) sh.getRange(2, ci + 1, sh.getMaxRows() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
-  });
- 
-  // Triggers: one on form submit, one daily to finish sending emails held back by the daily limit
-  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('onFormSubmitHandler').forSpreadsheet(ss).onFormSubmit().create();
-  ScriptApp.newTrigger('dailySend').timeBased().everyDays(1).atHour(CONFIG.DAILY_SEND_HOUR).create();
- 
-  // The "Allowed list" tab: one invited email per row in column A
-  let al = ss.getSheetByName(CONFIG.ALLOWED_SHEET);
-  if (!al) {
-    al = ss.insertSheet(CONFIG.ALLOWED_SHEET);
-    al.getRange(1, 1, 1, 2).setValues([['Email', 'Name (optional)']]).setFontWeight('bold').setBackground('#e8f0fe');
-    al.setFrozenRows(1);
-    al.setColumnWidth(1, 300);
-    al.setColumnWidth(2, 220);
-  }
-  const listCount = Object.keys(allowedSet_()).length;
- 
-  const n = withLock_(assignMissingIds_);
-  let checks = '';
-  try { checks = withLock_(refreshFormChecks_); } catch (err) { checks = '⚠️ ' + err.message; }
-  ui.alert('Setup done ✅\n\n' +
-    '• Columns added: ' + needed.join(', ') + '\n' +
-    (CONFIG.RESTRICT_TO_LIST
-      ? '• Allowed list: ' + listCount + ' email(s) in the "' + CONFIG.ALLOWED_SHEET + '" tab' +
-        (listCount ? '' : '  ⚠️ EMPTY — paste your invited emails in column A, or nobody will get a code') + '\n'
-      : '• Allowed list: OFF (anyone who fills the form gets a code)\n') +
-    '• IDs assigned to ' + n + ' existing row(s)\n' +
-    '• New form submissions will get an ID + QR email automatically\n' +
-    '• Emails held back by Gmail\'s daily limit go out every day at ' + CONFIG.DAILY_SEND_HOUR + ':00\n\n' +
-    'Emails left today: ' + MailApp.getRemainingDailyQuota() + '\n\n' +
-    'Existing rows have NOT been emailed yet — use "Re-check list & send pending QR emails" when ready.' +
-    (checks ? '\n\nForm checks:\n' + checks : ''));
-}
- 
-function menuAssignIds() {
-  const n = withLock_(assignMissingIds_);
-  SpreadsheetApp.getUi().alert('Assigned ' + n + ' new ID(s).');
-}
- 
-function menuSendPending() {
-  const r = withLock_(function () {
-    const n = assignMissingIds_();
-    let checks = '';
-    try { checks = refreshFormChecks_(); } catch (err) { checks = '⚠️ ' + err.message; }
-    const out = sendPending_(); out.newIds = n; out.checks = checks; return out;
-  });
-  SpreadsheetApp.getUi().alert(
-    'New IDs given: ' + r.newIds + '\nQR emails sent: ' + r.sent + '\nFailed: ' + r.failed +
-    '\nNot on the list (no code): ' + r.notOnList + '\nWaiting for tomorrow (daily limit): ' + r.waiting +
-    '\n\nEmails left today: ' + MailApp.getRemainingDailyQuota() +
-    (r.checks ? '\n\nForm checks:\n' + r.checks : ''));
-}
- 
-function resendSelected() {
-  const ui = SpreadsheetApp.getUi();
-  const sh = sheet_();
-  const range = sh.getActiveRange();
-  if (!range || range.getSheet().getName() !== sh.getName()) {
-    ui.alert('Select one or more rows in "' + CONFIG.RESPONSES_SHEET + '" first.');
-    return;
-  }
-  const c = cols_(sh);
-  let sent = 0;
-  const msgs = [];
-  for (let r = range.getRow(); r < range.getRow() + range.getNumRows(); r++) {
-    if (r < 2) continue;
-    const row = sh.getRange(r, 1, 1, sh.getLastColumn()).getValues()[0];
-    if (!row[c.id]) { msgs.push('Row ' + r + ': no ID yet'); continue; }
-    if (MailApp.getRemainingDailyQuota() < 1) { msgs.push('Daily email limit reached'); break; }
-    try {
-      sendQrEmail_(row, c, null);
-      sh.getRange(r, c.status + 1).setValue('Sent ' + stamp_(new Date()));
-      sent++;
-    } catch (err) {
-      sh.getRange(r, c.status + 1).setValue('Error: ' + err.message);
-      msgs.push('Row ' + r + ': ' + err.message);
-    }
-  }
-  ui.alert('Resent ' + sent + ' email(s).' + (msgs.length ? '\n\n' + msgs.join('\n') : ''));
-}
- 
-function sendTestEmail() {
-  const ui = SpreadsheetApp.getUi();
-  const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
-  const sh = sheet_();
-  const c = cols_(sh);
-  let row = null;
-  if (sh.getLastRow() >= 2) {
-    const data = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
-    row = data.find(function (r) { return r[c.id]; }) || null;
-  }
-  if (!row) {
-    // No registrations yet: fake one
-    row = [];
-    row[c.id] = makeId_(0);
-    if (c.name > -1) row[c.name] = 'Test Person';
-  }
-  sendQrEmail_(row, c, me);
-  ui.alert('Test email sent to ' + me + ' (using ID ' + row[c.id] + ').');
-}
- 
-function menuShowStats() {
-  const s = stats_();
-  const lines = s.days.map(function (n, i) { return dayName_(i + 1) + ': ' + n + ' checked in'; });
-  SpreadsheetApp.getUi().alert('Registered: ' + s.registered + '\n\n' + lines.join('\n'));
-}
- 
-// ----------------------------- Triggers -----------------------------
- 
-function onFormSubmitHandler(e) {
-  withLock_(function () {
-    assignMissingIds_();
-    try { refreshFormChecks_(); } catch (err) { console.warn('Form checks: ' + err.message); }
-    sendPending_();
-  });
-}
- 
-function dailySend() {
-  withLock_(function () {
-    assignMissingIds_();
-    try { refreshFormChecks_(); } catch (err) { console.warn('Form checks: ' + err.message); }
-    sendPending_();
-  });
-}
- 
-// --------------------------- IDs & emails ---------------------------
- 
-// Gives an ID only to rows that pass the checks:
-//  - email is on the Allowed list (when RESTRICT_TO_LIST is on)  → else status "Not on list"
-//  - email hasn't already got an ID in another row             → else status "Duplicate of EVT-…"
-// Rows marked "Not on list" are re-checked every run, so adding someone to the list later fixes it.
-function assignMissingIds_() {
-  const sh = sheet_();
-  const c = cols_(sh);
-  const last = sh.getLastRow();
-  if (last < 2) return 0;
-  const n = last - 1;
-  const data = sh.getRange(2, 1, n, sh.getLastColumn()).getValues();
-  const allowed = CONFIG.RESTRICT_TO_LIST ? allowedSet_() : null;
- 
-  let max = 0;
-  const taken = {};      // email → ID already given
-  const takenPhone = {}; // phone → ID already given
-  data.forEach(function (r) {
-    const m = String(r[c.id]).match(/(\d+)\s*$/);
-    if (m) max = Math.max(max, Number(m[1]));
-    const e = normEmail_(r[c.email]);
-    if (r[c.id] && e && !taken[e]) taken[e] = String(r[c.id]);
-    const p = c.phone > -1 ? phoneKey_(r[c.phone]) : '';
-    if (r[c.id] && p && !takenPhone[p]) takenPhone[p] = String(r[c.id]);
-  });
- 
-  const ids = data.map(function (r) { return [r[c.id]]; });
-  const statuses = data.map(function (r) { return [r[c.status]]; });
-  let added = 0, changed = false;
- 
-  for (let i = 0; i < n; i++) {
-    const r = data[i];
-    if (r[c.id] || r[0] === '') continue;            // already has an ID, or an empty row
-    const st = String(r[c.status] || '');
-    if (st.indexOf('Duplicate') === 0) continue;
-    const e = normEmail_(r[c.email]);
- 
-    if (e && taken[e]) {                              // same email registered twice
-      statuses[i][0] = 'Duplicate of ' + taken[e];
-      changed = true;
-      continue;
-    }
-    const p = c.phone > -1 ? phoneKey_(r[c.phone]) : '';
-    if (p && takenPhone[p]) {                         // same phone registered twice
-      statuses[i][0] = 'Duplicate phone of ' + takenPhone[p];
-      changed = true;
-      continue;
-    }
-    if (allowed && !allowed[e]) {                     // not invited
-      if (st.indexOf('Not on list') !== 0) { statuses[i][0] = 'Not on list'; changed = true; }
-      continue;
-    }
-    max++;
-    ids[i][0] = makeId_(max);
-    if (e) taken[e] = ids[i][0];
-    if (p) takenPhone[p] = ids[i][0];
-    if (st.indexOf('Not on list') === 0) statuses[i][0] = '';
-    added++;
-    changed = true;
-  }
-  if (changed) {
-    sh.getRange(2, c.id + 1, n, 1).setValues(ids);
-    sh.getRange(2, c.status + 1, n, 1).setValues(statuses);
-  }
-  return added;
-}
- 
-function allowedSet_() {
-  const set = {};
-  const al = ss_().getSheetByName(CONFIG.ALLOWED_SHEET);
-  if (!al || al.getLastRow() < 2) return set;
-  al.getRange(2, 1, al.getLastRow() - 1, 1).getValues().forEach(function (r) {
-    const e = normEmail_(r[0]);
-    if (e) set[e] = true;
-  });
-  return set;
-}
- 
-function normEmail_(e) { return String(e == null ? '' : e).trim().toLowerCase(); }
- 
-function phoneKey_(v) {
-  const d = String(v == null ? '' : v).replace(/\D/g, '');
-  return d.length >= 6 ? d.slice(-CONFIG.PHONE_DIGITS) : '';
-}
- 
-// Rewrites the Email and Phone questions' answer rules in the linked Google Form so the form
-// itself refuses: an email already registered (or, with the list on, not invited), and a phone
-// number already registered. Returns a short report.
-function refreshFormChecks_() {
-  if (!CONFIG.FORM_CHECKS) return 'Form checks are off';
-  const sh = sheet_();
-  let url = null;
-  try { url = sh.getFormUrl(); } catch (e) { /* not linked */ }
-  if (!url) return 'No form linked to this Sheet';
-  const form = FormApp.openByUrl(url);
-  const c = cols_(sh);
- 
-  const regEmails = {}, regPhones = {};
-  const last = sh.getLastRow();
-  if (last >= 2) {
-    sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues().forEach(function (r) {
-      if (!r[c.id]) return;
-      const e = normEmail_(r[c.email]);
-      if (e) regEmails[e] = true;
-      const p = c.phone > -1 ? phoneKey_(r[c.phone]) : '';
-      if (p) regPhones[p] = true;
-    });
-  }
- 
-  const items = form.getItems(FormApp.ItemType.TEXT);
-  const findItem = function (title) {
-    const t = String(title).toLowerCase();
-    return items.find(function (it) { return it.getTitle().trim().toLowerCase() === t; }) ||
-           items.find(function (it) { return it.getTitle().toLowerCase().indexOf(t) > -1; });
-  };
-  // first letter in either case (phones capitalise it), the rest lowercase
-  const emailPiece = function (e) {
-    const f = e.charAt(0), rest = escapeRe_(e.slice(1));
-    return (/[a-z]/.test(f) ? '[' + f + f.toUpperCase() + ']' : escapeRe_(f)) + rest;
-  };
-  const report = [];
- 
-  const emailItem = findItem(CONFIG.FIELDS.email);
-  if (emailItem) {
-    // Only write the hint when its words differ, so bold/italic added by hand in the form editor is kept
-    if (CONFIG.EMAIL_HELP && emailItem.getHelpText().trim() !== CONFIG.EMAIL_HELP.trim()) emailItem.setHelpText(CONFIG.EMAIL_HELP);
-    let rule;
-    if (CONFIG.RESTRICT_TO_LIST) {
-      const remaining = Object.keys(allowedSet_()).filter(function (e) { return !regEmails[e]; });
-      const pattern = remaining.length ? '^\\s*(' + remaining.map(emailPiece).join('|') + ')\\s*$' : '^$';
-      rule = FormApp.createTextValidation().requireTextMatchesPattern(pattern);
-      report.push('Email: only ' + remaining.length + ' invited, not-yet-registered email(s) accepted');
-    } else {
-      const reg = Object.keys(regEmails);
-      rule = reg.length
-        ? FormApp.createTextValidation().requireTextDoesNotMatchPattern('^\\s*(' + reg.map(emailPiece).join('|') + ')\\s*$')
-        : FormApp.createTextValidation().requireTextIsEmail();
-      report.push('Email: ' + reg.length + ' registered email(s) blocked');
-    }
-    try {
-      emailItem.asTextItem().setValidation(rule.setHelpText(CONFIG.MSG_EMAIL_BLOCKED).build());
-    } catch (err) {
-      emailItem.asTextItem().setValidation(FormApp.createTextValidation().requireTextIsEmail()
-        .setHelpText('Please enter a valid email address').build());
-      report.push('⚠️ Email check too large for Google Forms (' + err.message + '). The Sheet still blocks duplicates.');
-    }
-  } else {
-    report.push('⚠️ No "' + CONFIG.FIELDS.email + '" question found in the form');
-  }
- 
-  const phoneItem = findItem(CONFIG.FIELDS.phone);
-  if (phoneItem) {
-    const regP = Object.keys(regPhones);
-    // each digit may be followed by spaces/dashes, and +965 / 00965 in front is allowed
-    const piece = function (p) { return p.split('').join('\\D*'); };
-    const pattern = regP.length ? '^\\D*((00|\\+)?965)?\\D*(' + regP.map(piece).join('|') + ')\\D*$' : '^$';
-    try {
-      phoneItem.asTextItem().setValidation(FormApp.createTextValidation()
-        .requireTextDoesNotMatchPattern(pattern).setHelpText(CONFIG.MSG_PHONE_BLOCKED).build());
-      report.push('Phone: ' + regP.length + ' registered number(s) blocked');
-    } catch (err) {
-      phoneItem.asTextItem().clearValidation();
-      report.push('⚠️ Phone check too large for Google Forms (' + err.message + '). The Sheet still blocks duplicates.');
-    }
-  }
-  return report.join('\n');
-}
- 
-function menuRefreshFormChecks() {
-  const msg = withLock_(refreshFormChecks_);
-  SpreadsheetApp.getUi().alert('Form checks updated ✅\n\n' + msg);
-}
- 
-function sendNotOnListEmail_(to, name) {
-  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
-  const opts = {
-    to: to,
-    subject: CONFIG.EVENT_NAME + ' – registration not completed',
-    name: CONFIG.EVENT_NAME,
-    htmlBody:
-      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:auto;color:#1f2328">' +
-      '<h2 style="margin:0 0 12px">' + esc_(CONFIG.EVENT_NAME) + '</h2>' +
-      '<p>Hi ' + esc_(first) + ',</p>' +
-      '<p>Thank you for your interest. We couldn\'t find <b>' + esc_(to) + '</b> among the participants ' +
-      'registered for Kuwait on the <a href="' + CONFIG.NASA_URL + '">official NASA Space Apps website</a>, so we can\'t issue an entry code for this registration.</p>' +
-      '<p><b>What to do:</b></p><ul>' +
-      '<li>If you registered on the NASA Space Apps website, fill in our form again using the <b>exact same email</b> you used there.</li>' +
-      '<li>If you haven\'t registered yet, please register first on the <a href="' + CONFIG.NASA_URL + '">NASA Space Apps Kuwait page</a>.</li>' +
-      '</ul>' + (CONFIG.REPLY_TO ? '<p>Questions? Just reply to this email.</p>' : '') + '</div>',
-    body: 'Thank you for your interest in ' + CONFIG.EVENT_NAME + '. We couldn\'t find ' + to +
-      ' among the participants registered for Kuwait on the official NASA Space Apps website (' + CONFIG.NASA_URL + '). ' +
-      'If you registered there, fill in our form again using the exact same email. If not, please register there first.'
-  };
-  if (CONFIG.REPLY_TO) opts.replyTo = CONFIG.REPLY_TO;
-  MailApp.sendEmail(opts);
-}
- 
-function sendPending_() {
-  const sh = sheet_();
-  const c = cols_(sh);
-  const out = { sent: 0, failed: 0, waiting: 0, notOnList: 0 };
-  const last = sh.getLastRow();
-  if (last < 2) return out;
-  const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const status = String(row[c.status] || '');
-    if (!row[c.id]) {
-      if (status.indexOf('Not on list') === 0) {
-        out.notOnList++;
-        const email = String(row[c.email] || '').trim();
-        if (CONFIG.TELL_NOT_ON_LIST && status === 'Not on list' && email && MailApp.getRemainingDailyQuota() > 0) {
-          try {
-            sendNotOnListEmail_(email, c.name > -1 ? row[c.name] : '');
-            sh.getRange(i + 2, c.status + 1).setValue('Not on list (told ' + stamp_(new Date()) + ')');
-          } catch (err) { /* try again next run */ }
-        }
-      }
-      continue;
-    }
-    if (status.indexOf('Sent') === 0) continue;
-    if (!String(row[c.email] || '').trim()) {
-      if (status !== 'No email') sh.getRange(i + 2, c.status + 1).setValue('No email');
-      continue;
-    }
-    if (MailApp.getRemainingDailyQuota() < 1) {
-      out.waiting++;
-      if (status !== 'Waiting (daily limit)') sh.getRange(i + 2, c.status + 1).setValue('Waiting (daily limit)');
-      continue;
-    }
-    try {
-      sendQrEmail_(row, c, null);
-      sh.getRange(i + 2, c.status + 1).setValue('Sent ' + stamp_(new Date()));
-      out.sent++;
-    } catch (err) {
-      sh.getRange(i + 2, c.status + 1).setValue('Error: ' + err.message);
-      out.failed++;
-    }
-  }
-  return out;
-}
- 
-function sendQrEmail_(row, c, overrideTo) {
-  const id = String(row[c.id]);
-  const name = c.name > -1 ? String(row[c.name] || '').trim() : '';
-  const to = overrideTo || String(row[c.email] || '').trim();
-  if (!to) throw new Error('No email address');
-  const first = name.split(/\s+/)[0] || 'there';
- 
-  const qr = UrlFetchApp.fetch(qrUrl_(qrContent_(id), 400)).getBlob().setName(id + '.png');
- 
-  const html =
-    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:auto;color:#1f2328">' +
-      '<h2 style="margin:0 0 4px">' + esc_(CONFIG.EVENT_NAME) + '</h2>' +
-      '<p style="margin:0 0 16px;color:#57606a">' + esc_(CONFIG.EVENT_DETAILS) + '</p>' +
-      '<p>Hi ' + esc_(first) + ', you\'re registered! 🎉</p>' +
-      '<p>Show this QR code at the registration desk <b>each day</b> (' + allDayNames_() + '). ' +
-      'A screenshot works fine.</p>' +
-      '<div style="text-align:center;margin:20px 0;padding:16px;border:1px solid #d0d7de;border-radius:12px">' +
-        '<img src="cid:qr" width="240" height="240" alt="QR code ' + esc_(id) + '"><br>' +
-        '<div style="font-size:22px;font-weight:bold;letter-spacing:2px;margin-top:8px">' + esc_(id) + '</div>' +
-        (name ? '<div style="color:#57606a;margin-top:4px">' + esc_(name) + '</div>' : '') +
-      '</div>' +
-      '<p style="color:#57606a;font-size:13px">If the image doesn\'t show, open the attached ' + esc_(id) +
-      '.png, or just tell the desk your code: <b>' + esc_(id) + '</b>.</p>' +
-    '</div>';
- 
-  const opts = {
-    to: to,
-    subject: CONFIG.EMAIL_SUBJECT.replace('{EVENT}', CONFIG.EVENT_NAME),
-    htmlBody: html,
-    body: 'You are registered for ' + CONFIG.EVENT_NAME + '. Your entry code is ' + id +
-          '. Show the attached QR code at the registration desk each day.',
-    name: CONFIG.EVENT_NAME,
-    inlineImages: { qr: qr },
-    attachments: [qr.copyBlob().setName(id + '.png')]
-  };
-  if (CONFIG.REPLY_TO) opts.replyTo = CONFIG.REPLY_TO;
-  MailApp.sendEmail(opts);
-}
- 
-// ------------------------- Web app (pages) --------------------------
- 
-function doGet(e) {
-  if (e && e.parameter && e.parameter.api) return api_(e.parameter);
-  const page = (e && e.parameter && e.parameter.page) || 'scanner';
-  const file = page === 'badges' ? 'Badges' : 'Scanner';
-  return HtmlService.createHtmlOutputFromFile(file)
-    .setTitle(page === 'badges' ? 'Badges – ' + CONFIG.EVENT_NAME : 'Check-in – ' + CONFIG.EVENT_NAME)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
-}
- 
-// Data connection for the standalone scanner page (GitHub Pages), which can use the iPhone camera.
-function api_(p) {
-  let out;
+
+/* ---- sounds ---- */
+var AC = null;
+function beep(ok){
   try {
-    let data;
-    switch (p.api) {
-      case 'config':  data = getConfig(); break;
-      case 'pin':     data = verifyPin(p.pin); break;
-      case 'stats':   data = getStats(p.pin); break;
-      case 'checkin': data = checkIn(p.pin, p.id, p.day); break;
-      case 'undo':    data = undoCheckIn(p.pin, p.id, p.day); break;
-      case 'search':  data = searchPeople(p.pin, p.q); break;
-      default: throw new Error('Unknown request');
-    }
-    out = { ok: true, data: data };
-  } catch (err) {
-    out = { ok: false, error: err.message };
-  }
-  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
-}
- 
-// Called from the pages with google.script.run
- 
-function getConfig() {
-  const names = [];
-  for (let d = 1; d <= CONFIG.DAYS; d++) names.push(dayName_(d));
-  return { eventName: CONFIG.EVENT_NAME, days: CONFIG.DAYS, dayNames: names, today: todayDay_(), prefix: CONFIG.ID_PREFIX };
-}
- 
-function verifyPin(pin) {
-  checkPin_(pin);
-  return getStats(pin);
-}
- 
-function getStats(pin) {
-  checkPin_(pin);
-  return stats_();
-}
- 
-function checkIn(pin, rawId, day) {
-  checkPin_(pin);
-  day = Number(day);
-  // When event dates are set, the day always comes from today's real date:
-  // a code can't be used for Day 2 on Day 1, and nothing works on non-event days.
-  if (CONFIG.DAY_DATES && CONFIG.DAY_DATES.length) {
-    const today = todayDay_();
-    if (!today) return { status: 'notday', id: String(rawId || '') };
-    day = today;
-  }
-  if (!(day >= 1 && day <= CONFIG.DAYS)) throw new Error('Choose a day first');
-  const id = normalizeId_(rawId);
-  if (!id) return { status: 'notfound', id: String(rawId || '') };
- 
-  return withLock_(function () {
-    const sh = sheet_();
-    const c = cols_(sh);
-    const dayCol = c.days[day - 1];
-    if (dayCol === -1) throw new Error('Day ' + day + ' column missing — run Set up again');
-    const last = sh.getLastRow();
-    if (last < 2) return { status: 'notfound', id: id };
-    const ids = sh.getRange(2, c.id + 1, last - 1, 1).getValues();
-    let r = -1;
-    for (let i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]).trim().toUpperCase() === id) { r = i + 2; break; }
-    }
-    if (r === -1) return { status: 'notfound', id: id, day: day };
- 
-    const row = sh.getRange(r, 1, 1, sh.getLastColumn()).getValues()[0];
-    // Re-check the list at the gate: someone removed from the list can't get in with an old QR
-    if (CONFIG.RESTRICT_TO_LIST && !allowedSet_()[normEmail_(row[c.email])]) {
-      return { status: 'notallowed', person: person_(row, c), day: day };
-    }
-    if (row[dayCol] !== '' && row[dayCol] !== null) {
-      return { status: 'already', person: person_(row, c), at: clock_(row[dayCol]), day: day, stats: stats_(sh, c) };
-    }
-    const now = new Date();
-    sh.getRange(r, dayCol + 1).setValue(now);
-    row[dayCol] = now;
-    return { status: 'ok', person: person_(row, c), at: clock_(now), day: day, stats: stats_(sh, c) };
-  });
-}
- 
-function undoCheckIn(pin, rawId, day) {
-  checkPin_(pin);
-  const id = normalizeId_(rawId);
-  day = Number(day);
-  return withLock_(function () {
-    const sh = sheet_();
-    const c = cols_(sh);
-    const last = sh.getLastRow();
-    if (last < 2) return false;
-    const ids = sh.getRange(2, c.id + 1, last - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]).trim().toUpperCase() === id) {
-        sh.getRange(i + 2, c.days[day - 1] + 1).clearContent();
-        return true;
-      }
-    }
-    return false;
-  });
-}
- 
-function searchPeople(pin, query) {
-  checkPin_(pin);
-  const q = String(query || '').trim().toLowerCase();
-  if (q.length < 2) return [];
-  const sh = sheet_();
-  const c = cols_(sh);
-  const last = sh.getLastRow();
-  if (last < 2) return [];
-  const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-  const out = [];
-  for (let i = 0; i < data.length && out.length < 15; i++) {
-    const row = data[i];
-    if (!row[c.id]) continue;
-    const hay = [row[c.id], c.name > -1 ? row[c.name] : '', c.email > -1 ? row[c.email] : '',
-                 c.org > -1 ? row[c.org] : ''].join(' ').toLowerCase();
-    if (hay.indexOf(q) > -1) out.push(person_(row, c));
-  }
-  return out;
-}
- 
-function getBadges(pin) {
-  checkPin_(pin);
-  const sh = sheet_();
-  const c = cols_(sh);
-  const last = sh.getLastRow();
-  if (last < 2) return { eventName: CONFIG.EVENT_NAME, people: [] };
-  const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-  const people = data.filter(function (r) { return r[c.id]; })
-    .map(function (r) {
-      const p = person_(r, c);
-      p.qr = qrUrl_(qrContent_(p.id), 300);
-      return p;
-    })
-    .sort(function (a, b) { return a.name.localeCompare(b.name); });
-  return { eventName: CONFIG.EVENT_NAME, people: people };
-}
- 
-// ----------------------------- Helpers ------------------------------
- 
-function ss_() {
-  const id = PropertiesService.getScriptProperties().getProperty('SS_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
-}
- 
-function sheet_() {
-  const ss = ss_();
-  // 1) exact name
-  let sh = ss.getSheetByName(CONFIG.RESPONSES_SHEET);
-  if (sh) return sh;
-  const sheets = ss.getSheets();
-  // 2) same name, ignoring upper/lower case and spaces
-  const want = String(CONFIG.RESPONSES_SHEET).toLowerCase().replace(/\s+/g, '');
-  sh = sheets.find(function (s) { return s.getName().toLowerCase().replace(/\s+/g, '') === want; });
-  if (sh) return sh;
-  // 3) the tab that a Google Form writes to (any language)
-  sh = sheets.find(function (s) { try { return !!s.getFormUrl(); } catch (e) { return false; } });
-  if (sh) return sh;
-  throw new Error('No form responses tab found. In your Google Form open Responses → Link to Sheets → ' +
-    'choose this spreadsheet. Tabs here: ' + sheets.map(function (s) { return '"' + s.getName() + '"'; }).join(', '));
-}
- 
-function headers_(sh) {
-  const lastCol = Math.max(sh.getLastColumn(), 1);
-  return sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
-}
- 
-function findCol_(headers, wanted) {
-  const w = String(wanted).trim().toLowerCase();
-  if (!w) return -1;
-  const own = [COL_ID.toLowerCase(), COL_STATUS.toLowerCase()];
-  let i = headers.findIndex(function (h) { return h.toLowerCase() === w; });
-  if (i === -1) {
-    i = headers.findIndex(function (h) {
-      const l = h.toLowerCase();
-      return l.indexOf(w) > -1 && own.indexOf(l) === -1 && !/^day \d+ check-in$/.test(l);
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    var notes = ok === 'ok' ? [880, 1320] : ok === 'warn' ? [600, 600] : [300, 220];
+    notes.forEach(function(f, i){
+      var o = AC.createOscillator(), g = AC.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(AC.destination);
+      var t = AC.currentTime + i * 0.13;
+      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.start(t); o.stop(t + 0.13);
     });
-  }
-  return i;
+    if (navigator.vibrate) navigator.vibrate(ok === 'ok' ? 60 : [80, 60, 80]);
+  } catch(e) {}
 }
- 
-function cols_(sh) {
-  const h = headers_(sh);
-  const c = {};
-  Object.keys(CONFIG.FIELDS).forEach(function (k) { c[k] = findCol_(h, CONFIG.FIELDS[k]); });
-  c.id = h.indexOf(COL_ID);
-  c.status = h.indexOf(COL_STATUS);
-  c.days = [];
-  for (let d = 1; d <= CONFIG.DAYS; d++) c.days.push(h.indexOf(dayHeader_(d)));
-  if (c.id === -1 || c.status === -1) throw new Error('Run "🎟️ Check-in → Set up" first');
-  return c;
-}
- 
-function person_(row, c) {
-  const get = function (k) { return c[k] > -1 ? String(row[c[k]] == null ? '' : row[c[k]]).trim() : ''; };
-  return {
-    id: String(row[c.id]),
-    name: get('name') || '(no name)',
-    org: get('org'),
-    role: get('role'),
-    shirt: get('shirt'),
-    days: c.days.map(function (ci) { return ci > -1 && row[ci] !== '' && row[ci] !== null; })
-  };
-}
- 
-function stats_(sh, c) {
-  sh = sh || sheet_();
-  c = c || cols_(sh);
-  const last = sh.getLastRow();
-  const res = { registered: 0, days: c.days.map(function () { return 0; }) };
-  if (last < 2) return res;
-  const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-  data.forEach(function (r) {
-    if (!r[c.id]) return;
-    res.registered++;
-    c.days.forEach(function (ci, d) { if (ci > -1 && r[ci] !== '' && r[ci] !== null) res.days[d]++; });
-  });
-  return res;
-}
- 
-function normalizeId_(raw) {
-  let s = String(raw || '').trim().toUpperCase();
-  if (!s) return '';
-  // QR may contain a URL or extra text — take the last token that looks like an ID
-  const m = s.match(new RegExp(escapeRe_(CONFIG.ID_PREFIX.toUpperCase()) + '-?(\\d+)'));
-  if (m) return makeId_(Number(m[1]));
-  if (/^\d+$/.test(s)) return makeId_(Number(s));   // typed "142" → EVT-0142
-  return s;
-}
- 
-function makeId_(n) { return CONFIG.ID_PREFIX + '-' + String(n).padStart(4, '0'); }
- 
-// What the QR code holds: a scanner link (iPhone Camera friendly) or just the ID
-function qrContent_(id) {
-  const base = String(CONFIG.SCANNER_URL || '').trim().replace(/[?#].*$/, '');
-  return /^https:\/\//.test(base) ? base + '?id=' + encodeURIComponent(id) : id;
-}
- 
-function qrUrl_(text, size) {
-  size = size || 300;
-  return 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size +
-         '&margin=8&ecc=M&data=' + encodeURIComponent(text);
-}
- 
-// Locks every scanner for 10 minutes after 20 wrong PINs, so nobody can guess it by trying many.
-function checkPin_(pin) {
-  const cache = CacheService.getScriptCache();
-  const fails = Number(cache.get('pinFails') || 0);
-  if (fails >= 20) throw new Error('Too many wrong PINs. Scanners are locked for 10 minutes.');
-  if (String(pin || '') !== String(CONFIG.STAFF_PIN)) {
-    cache.put('pinFails', String(fails + 1), 600);
-    throw new Error('Wrong PIN');
-  }
-}
- 
-function todayDay_() {
-  if (!CONFIG.DAY_DATES || !CONFIG.DAY_DATES.length) return 0;
-  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  return CONFIG.DAY_DATES.indexOf(today) + 1; // 0 if not an event day
-}
- 
-function withLock_(fn) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try { return fn(); } finally { lock.releaseLock(); }
-}
- 
-function clock_(d) {
-  const date = d instanceof Date ? d : new Date(d);
-  if (isNaN(date)) return String(d);
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'HH:mm');
-}
- 
-function stamp_(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'); }
- 
-function esc_(s) {
-  return String(s).replace(/[&<>"']/g, function (ch) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+
+/* ---- setup ---- */
+call('getConfig').then(function(cfg){
+  S.days = cfg.days;
+  S.names = cfg.dayNames || [];
+  $('title').textContent = cfg.eventName;
+  $('lockTitle').textContent = cfg.eventName;
+  document.title = 'Check-in – ' + cfg.eventName;
+  var saved = Number(store('ci_day') || 0);
+  S.day = cfg.today || saved || 1;
+  drawDays();
+  // Opened from a QR link (iPhone Camera app)? → ?id=EVT-0001
+  var id = new URLSearchParams(location.search).get('id');
+  if (id) { S.pendingId = String(id); $('partNote').style.display = 'block'; }
+  var p = store('ci_pin');
+  if (p) unlock(p, true);
+}).catch(showFatal);
+if (!API) showFatal(new Error('Paste your Web app link into API_URL at the top of this file.'));
+
+function drawDays(){
+  var h = '';
+  for (var d = 1; d <= S.days; d++) h += '<button data-d="' + d + '" class="' + (d === S.day ? 'on' : '') + '">' + esc(dn(d)) + '</button>';
+  $('days').innerHTML = h;
+  Array.prototype.forEach.call($('days').children, function(b){
+    b.onclick = function(){ S.day = Number(b.getAttribute('data-d')); store('ci_day', String(S.day)); drawDays(); refreshStats(); focusCode(); };
   });
 }
- 
-function escapeRe_(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function unlock(pin, silent){
+  $('pinErr').textContent = '';
+  call('verifyPin', pin).then(function(stats){
+    S.pin = pin; store('ci_pin', pin);
+    $('lock').style.display = 'none';
+    showStats(stats);
+    if (S.pendingId) { var id = S.pendingId; S.pendingId = ''; doCheckIn(id); }
+    else focusCode();
+    if (store('ci_cam') === '1') startCam();
+  }).catch(function(e){
+    store('ci_pin', null);
+    if (!silent) $('pinErr').textContent = e.message || 'Wrong PIN';
+  });
+}
+$('pinBtn').onclick = function(){ unlock($('pin').value.trim()); };
+$('pin').onkeydown = function(e){ if (e.key === 'Enter') unlock($('pin').value.trim()); };
+$('lockBtn').onclick = function(){ store('ci_pin', null); S.pin = ''; stopCam(); $('pin').value = ''; $('lock').style.display = 'flex'; };
+
+function showStats(s){
+  if (!s) return;
+  $('reg').textContent = s.registered;
+  $('today').textContent = s.days[S.day - 1] != null ? s.days[S.day - 1] : '–';
+}
+function refreshStats(){ if (S.pin) call('getStats', S.pin).then(showStats).catch(function(){}); }
+setInterval(refreshStats, 30000);
+
+function focusCode(){ if (!S.camOn) $('code').focus(); }
+
+/* ---- check-in ---- */
+function doCheckIn(code){
+  code = String(code || '').trim();
+  if (!code || S.busy || S.flashOn) return;
+  var now = Date.now();
+  if (code === S.lastCode && now - S.lastAt < 4000) return; // same QR still in front of the camera
+  S.lastCode = code; S.lastAt = now; S.busy = true;
+  showResult('wait', '<div class="big">Checking ' + esc(code) + '…</div>');
+  call('checkIn', S.pin, code, S.day).then(function(r){
+    S.busy = false; $('code').value = '';
+    if (r.day && r.day !== S.day) { S.day = r.day; store('ci_day', String(S.day)); drawDays(); }
+    if (r.stats) showStats(r.stats);
+    if (r.status === 'ok') {
+      beep('ok'); showPerson('ok', '✅ Welcome! ' + dn(S.day) + ' checked in', r.person, 'at ' + r.at);
+      addRecent(r.person, '' + dn(S.day) + ' ✓ ' + r.at);
+    } else if (r.status === 'already') {
+      beep('bad'); showPerson('bad', '⛔ Code already used today (' + dn(S.day) + '). Do not admit again.', r.person, 'first used at ' + r.at);
+      addRecent(r.person, '⛔ 2nd use, ' + dn(S.day));
+    } else if (r.status === 'notallowed') {
+      beep('bad'); showPerson('bad', '⛔ Not on the participant list. No entry.', r.person, 'removed from the allowed list');
+    } else if (r.status === 'notday') {
+      beep('bad'); showResult('bad', '<div class="big">📅 Today is not an event day</div><div class="meta">Check-in only works on the dates set in DAY_DATES.</div>');
+    } else {
+      beep('bad'); showResult('bad', '<div class="big">❌ Not found: ' + esc(r.id) + '</div><div class="meta">Search by name below, or send them to the walk-in lane to register.</div>');
+    }
+    focusCode();
+  }).catch(function(e){
+    S.busy = false; beep('bad');
+    if (/PIN/.test(e.message || '')) { $('lockBtn').click(); return; }
+    showResult('bad', '<div class="big">⚠️ Couldn\'t save</div><div class="meta">' + esc(e.message || e) + '<br>Check the internet connection and try again.</div>');
+    S.lastCode = '';
+  });
+}
+
+function showFlash(kind, html){
+  var f = $('flash');
+  clearTimeout(S.flashT);
+  f.className = 'flash show ' + (kind === 'wait' ? '' : kind);
+  f.innerHTML = html + (kind === 'wait' ? '' : '<div class="tap">Tap anywhere to continue</div>');
+  S.flashOn = true;
+  if (kind !== 'wait') S.flashT = setTimeout(hideFlash, kind === 'ok' ? 2200 : 3800);
+}
+function hideFlash(){
+  clearTimeout(S.flashT);
+  $('flash').className = 'flash'; S.flashOn = false;
+  S.lastCode = ''; focusCode();
+}
+$('flash').onclick = function(e){ if (e.target.tagName !== 'BUTTON' && !$('flash').classList.contains('wait')) { if (S.busy) return; hideFlash(); } };
+
+function showResult(kind, html){
+  showFlash(kind, html);
+  var el = $('result');
+  el.className = 'result show ' + (kind === 'wait' ? '' : kind);
+  if (kind === 'wait') { el.style.background = '#fff'; el.style.borderColor = 'var(--line)'; } else { el.style.background = ''; el.style.borderColor = ''; }
+  el.innerHTML = html;
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function showPerson(kind, headline, p, when){
+  var pills = p.days.map(function(on, i){ return '<span class="pill ' + (on ? 'y' : '') + '">' + esc(dn(i + 1)) + (on ? ' ✓' : '') + '</span>'; }).join('');
+  var meta = [p.role, p.org].filter(Boolean).map(esc).join(' · ');
+  showResult(kind,
+    '<div class="big">' + esc(headline) + '</div>' +
+    '<div class="name">' + esc(p.name) + '</div>' +
+    '<div class="meta">' + esc(p.id) + (meta ? ' · ' + meta : '') + ' · ' + esc(when) + '</div>' +
+    (p.shirt ? '<div class="shirt">👕 ' + esc(p.shirt) + '</div>' : '') +
+    '<div class="pills">' + pills + '</div>' +
+    (kind === 'ok' ? '<div style="margin-top:12px"><button class="btn ghost small" onclick="undo(\'' + esc(p.id) + '\')">Undo this check-in</button></div>' : ''));
+}
+
+function undo(id){
+  hideFlash();
+  call('undoCheckIn', S.pin, id, S.day).then(function(){
+    showResult('warn', '<div class="big">↩️ Undone: ' + esc(id) + ' (' + dn(S.day) + ')</div>');
+    S.lastCode = ''; refreshStats();
+  }).catch(function(e){ showResult('bad', '<div class="big">' + esc(e.message || e) + '</div>'); });
+}
+
+$('goBtn').onclick = function(){ doCheckIn($('code').value); };
+$('code').onkeydown = function(e){ if (e.key === 'Enter') { e.preventDefault(); doCheckIn($('code').value); } };
+
+/* ---- search ---- */
+function search(){
+  var q = $('q').value.trim();
+  if (q.length < 2) { $('hits').innerHTML = '<div class="muted">Type at least 2 letters</div>'; return; }
+  $('hits').innerHTML = '<div class="muted">Searching…</div>';
+  call('searchPeople', S.pin, q).then(function(list){
+    if (!list.length) { $('hits').innerHTML = '<div class="muted">No match. Walk-in? Ask them to fill the form at the desk.</div>'; return; }
+    $('hits').innerHTML = list.map(function(p){
+      var done = p.days[S.day - 1];
+      return '<div class="item"><div class="who"><div><b>' + esc(p.name) + '</b></div><div class="muted">' + esc(p.id) + ' · ' + esc([p.role, p.org].filter(Boolean).join(' · ')) + '</div></div>' +
+        (done ? '<span class="pill y">' + dn(S.day) + ' ✓</span>' : '<button class="btn small" onclick="pick(\'' + esc(p.id) + '\')">Check in</button>') + '</div>';
+    }).join('');
+  }).catch(function(e){ $('hits').innerHTML = '<div class="err">' + esc(e.message || e) + '</div>'; });
+}
+function pick(id){ S.lastCode = ''; doCheckIn(id); setTimeout(search, 1200); }
+$('qBtn').onclick = search;
+$('q').onkeydown = function(e){ if (e.key === 'Enter') search(); };
+
+/* ---- recent ---- */
+function addRecent(p, label){
+  S.recent.unshift({ name: p.name, id: p.id, label: label });
+  S.recent = S.recent.slice(0, 8);
+  $('recent').innerHTML = S.recent.map(function(r){
+    return '<div class="item"><div class="who"><div><b>' + esc(r.name) + '</b></div><div class="muted">' + esc(r.id) + '</div></div><span class="muted">' + esc(r.label) + '</span></div>';
+  }).join('');
+}
+
+/* ---- camera ---- */
+function startCam(){
+  $('camErr').textContent = '';
+  if (typeof Html5Qrcode === 'undefined') { $('camErr').textContent = 'Camera library did not load. Type IDs or use a USB/Bluetooth scanner.'; return; }
+  S.scanner = S.scanner || new Html5Qrcode('reader');
+  S.scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } },
+    function(text){ doCheckIn(text); }, function(){})
+  .then(function(){ S.camOn = true; store('ci_cam', '1'); $('camBtn').textContent = '⏹ Stop camera'; })
+  .catch(function(e){
+    S.camOn = false;
+    $('camErr').textContent = 'Camera not available here (' + (e && e.message ? e.message : e) + '). Allow camera access, or type IDs / use a barcode scanner.';
+  });
+}
+function stopCam(){
+  if (S.scanner && S.camOn) S.scanner.stop().catch(function(){});
+  S.camOn = false; store('ci_cam', '0'); $('camBtn').textContent = '📷 Use camera';
+}
+$('camBtn').onclick = function(){ S.camOn ? stopCam() : startCam(); };
+
+function showFatal(e){ document.body.innerHTML = '<div class="wrap"><div class="card"><h1>Something went wrong</h1><p>' + esc(e.message || e) + '</p></div></div>'; }
+</script>
+</body>
+</html>
 
 
 
