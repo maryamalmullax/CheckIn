@@ -122,7 +122,7 @@ function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
 /* ====== PASTE YOUR WEB APP LINK (ends in /exec) BETWEEN THE QUOTES ====== */
-var API_URL = '';
+var API_URL = 'https://script.google.com/macros/s/AKfycbxc5yDMuKa1B7-XYEdXfif9EGN0-MrJHRgg-6dkB4l6lMuTC81Ee_GOluHifSQV99qHOQ/exec';
 /* ======================================================================== */
 
 var API = (function(){
