@@ -258,7 +258,7 @@ function showFlash(kind, html){
   f.className = 'flash show ' + (kind === 'wait' ? '' : kind);
   f.innerHTML = html + (kind === 'wait' ? '' : '<div class="tap">Tap anywhere to continue</div>');
   S.flashOn = true;
-  if (kind !== 'wait') S.flashT = setTimeout(hideFlash, kind === 'ok' ? 2200 : 3800);
+  if (kind !== 'wait') S.flashT = setTimeout(hideFlash, 6000);
 }
 function hideFlash(){
   clearTimeout(S.flashT);
