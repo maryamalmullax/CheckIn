@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Lanyards & Stock</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2328; --muted:#5b6470; --line:#d9dde3;
+    --brand:#2961DA; --ok:#1a7f37; --okbg:#dafbe1; --warn:#9a6700; --warnbg:#fff3c4; --bad:#c4202f; --badbg:#ffe1e3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:620px;margin:0 auto;padding:calc(64px + env(safe-area-inset-top)) 16px 60px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  h1{font-size:18px;margin:0}
+  h2{font-size:15px;margin:0 0 8px}
+  .muted{color:var(--muted);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)} .dot.off{background:var(--bad)}
+  .row{display:flex;gap:8px;align-items:center}
+  input,select{font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  input{flex:1;min-width:0}
+  input:focus,select:focus{outline:none;border-color:var(--brand)}
+  .tabs{display:flex;gap:6px}
+  .tabs button{flex:1;padding:11px 0;font-size:15px;font-weight:700;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .tabs button.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .btn{padding:11px 14px;font-size:15px;font-weight:700;border:0;border-radius:10px;background:var(--brand);color:#fff;cursor:pointer;white-space:nowrap}
+  .btn.ghost{background:#fff;color:var(--brand);border:2px solid var(--brand)}
+  .btn.small{padding:7px 10px;font-size:13px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px}
+  .chk input{flex:none;width:20px;height:20px}
+  .bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--ok)}
+  .team{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:#fff}
+  .team.done{border-color:var(--ok)}
+  .th{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f1f4fa;font-weight:800}
+  .team.done .th{background:var(--okbg)}
+  .th span{font-weight:700;font-size:13px;color:var(--muted)}
+  .team.done .th span{color:var(--ok)}
+  .p{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+  .p.has{background:#f6fff8}
+  .who{flex:1;min-width:0}
+  .who .n{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who .m{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .p select{width:150px;padding:9px 8px;font-weight:700}
+  .p.has select{border-color:var(--ok);color:var(--ok)}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th{font-size:12px;color:var(--muted);text-align:right;font-weight:600;padding:6px 4px;border-bottom:1px solid var(--line)}
+  th:first-child{text-align:left}
+  td{padding:9px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  td:first-child{text-align:left;white-space:normal}
+  td.left{font-weight:800}
+  tr.low td.left{color:var(--warn)} tr.out td.left{color:var(--bad)}
+  tr.low{background:var(--warnbg)} tr.out{background:var(--badbg)}
+  .cat{font-weight:800;color:var(--brand);font-size:13px;padding:14px 4px 4px;text-align:left;border-bottom:1px solid var(--line)}
+  .adj{display:inline-flex;gap:4px;margin-left:6px}
+  .adj button{width:30px;height:30px;border-radius:8px;border:2px solid var(--line);background:#fff;font-size:16px;font-weight:800;cursor:pointer;color:var(--ink)}
+  .lock{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .lock .card{width:100%;max-width:360px;text-align:center}
+  .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:8px}
+  .toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));max-width:588px;margin:0 auto;padding:12px 14px;border-radius:12px;color:#fff;font-weight:600;display:none;z-index:20}
+  .toast.show{display:block} .toast.ok{background:var(--ok)} .toast.warn{background:var(--warn)} .toast.bad{background:var(--bad)}
+  .empty{padding:18px 0;text-align:center}
+  .hide{display:none}
+  @media (max-width:380px){ .p select{width:124px} }
+</style>
+</head>
+<body>
+
+<div class="lock" id="lock">
+  <div class="card">
+    <h1>Lanyards & Stock</h1>
+    <p class="muted">Private page. Enter the stock PIN.</p>
+    <div class="row"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Stock PIN"><button class="btn" id="pinBtn">Open</button></div>
+    <div class="err" id="pinErr"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div><h1>Lanyards & Stock</h1><div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Live</span></div></div>
+    <button class="btn ghost small" id="lockBtn">Lock</button>
+  </header>
+
+  <div class="card"><div class="tabs" id="tabs">
+    <button data-t="lan" class="on">🏷️ Lanyards</button>
+    <button data-t="stock">📦 Stock</button>
+  </div></div>
+
+  <!-- Lanyards -->
+  <div id="vLan">
+    <div class="card">
+      <div class="row"><b id="lanCount" style="font-size:18px">–</b><span class="muted" id="lanTxt"></span></div>
+      <div class="bar"><i id="lanBar" style="width:0"></i></div>
+      <input id="q" placeholder="Search team or name" autocomplete="off" style="width:100%;margin-top:12px">
+      <label class="chk"><input type="checkbox" id="hereOnly" checked> <span id="hereLbl">Only people checked in on Saturday</span></label>
+      <label class="chk"><input type="checkbox" id="openOnly"> Hide teams that are done</label>
+    </div>
+    <div id="teams"><div class="muted empty">Loading…</div></div>
+  </div>
+
+  <!-- Stock -->
+  <div id="vStock" class="hide">
+    <div class="card">
+      <h2>Stock</h2>
+      <div class="muted" style="margin-bottom:6px">Start quantities come from the <b>Stock</b> tab in the Sheet. Given updates live. Use − / + for anything handed out outside the lists.</div>
+      <table><thead><tr><th>Item</th><th>Start</th><th>Given</th><th>Left</th></tr></thead><tbody id="stockBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== SAME WEB APP LINK AS THE SCANNER (ends in /exec) ====== */
+var API_URL = 'https://script.google.com/macros/s/AKfycbyDjUo2pSaPWxgitSELap5fhhxMY2GRSSbU4QcB--8JItU3ktoXxHvfCAzoRUabnH_DrA/exec';
+/* =============================================================== */
+var REFRESH_SECONDS = 6;
+
+var S = { pin: '', tab: 'lan', data: { items: [], roles: [], people: [] }, busy: {}, timer: 0, loading: false };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
+function call(params){
+  var qs = Object.keys(params).map(function(k){ return k + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
+  return fetch(API_URL + '?' + qs + '&t=' + Date.now(), { redirect: 'follow', credentials: 'omit' })
+    .then(function(r){ return r.json(); })
+    .catch(function(){ throw new Error('No connection. Check the internet.'); })
+    .then(function(j){ if (!j.ok) throw new Error(j.error || 'Error'); return j.data; });
+}
+function toast(kind, msg){
+  var t = $('toast'); t.className = 'toast show ' + kind; t.textContent = msg;
+  clearTimeout(toast.h); toast.h = setTimeout(function(){ t.className = 'toast'; }, 3000);
+}
+
+/* ---- PIN ---- */
+function unlock(pin, silent){
+  $('pinErr').textContent = '';
+  call({ api: 'stock', pin: pin }).then(function(d){
+    S.pin = pin; store('stock_pin', pin);
+    $('lock').style.display = 'none';
+    apply(d);
+    clearInterval(S.timer); S.timer = setInterval(load, REFRESH_SECONDS * 1000);
+  }).catch(function(e){
+    store('stock_pin', null);
+    if (!silent) $('pinErr').textContent = e.message || 'Wrong PIN';
+  });
+}
+$('pinBtn').onclick = function(){ unlock($('pin').value.trim()); };
+$('pin').onkeydown = function(e){ if (e.key === 'Enter') unlock($('pin').value.trim()); };
+$('lockBtn').onclick = function(){ store('stock_pin', null); S.pin = ''; clearInterval(S.timer); $('pin').value = ''; $('lock').style.display = 'flex'; };
+var saved = store('stock_pin'); if (saved) unlock(saved, true);
+
+/* ---- live ---- */
+function load(){
+  if (!S.pin || S.loading || document.hidden) return;
+  S.loading = true;
+  call({ api: 'stock', pin: S.pin }).then(function(d){ S.loading = false; apply(d); })
+    .catch(function(e){ S.loading = false; live(false); if (/PIN/.test(e.message || '')) $('lockBtn').click(); });
+}
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) load(); });
+function live(on){
+  $('dot').className = 'dot' + (on ? '' : ' off');
+  $('liveTxt').textContent = on ? 'Live · updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Offline · retrying…';
+}
+function apply(d){
+  // keep choices this phone is still saving
+  var mine = {}; S.data.people.forEach(function(p){ if (S.busy[p.id]) mine[p.id] = p.lanyard; });
+  d.people.forEach(function(p){ if (p.id in mine) p.lanyard = mine[p.id]; });
+  S.data = d; live(true);
+  if (d.dayNames && d.dayNames.length) $('hereLbl').textContent = 'Only people checked in on ' + d.dayNames.join(' / ');
+  var a = document.activeElement;
+  if (a && a.tagName === 'SELECT') { drawStock(); return; }   // don't close an open picker
+  draw();
+}
+function draw(){ drawLan(); drawStock(); }
+
+/* ---- lanyards ---- */
+function drawLan(){
+  var q = $('q').value.trim().toLowerCase();
+  var people = S.data.people.filter(function(p){ return !$('hereOnly').checked || p.here; });
+  var tagged = people.filter(function(p){ return p.lanyard; }).length;
+  $('lanCount').textContent = tagged + ' / ' + people.length;
+  $('lanTxt').textContent = 'people have a lanyard';
+  $('lanBar').style.width = people.length ? Math.round(tagged * 100 / people.length) + '%' : '0';
+
+  var groups = {}, order = [];
+  people.forEach(function(p){
+    var key = (p.team || '').toLowerCase().replace(/\s+/g, ' ').trim() || '~';
+    if (!groups[key]) { groups[key] = { name: p.team || 'No team name', list: [] }; order.push(key); }
+    groups[key].list.push(p);
+  });
+  order.sort(function(a, b){
+    if (a === '~') return 1; if (b === '~') return -1;
+    return groups[a].name.localeCompare(groups[b].name, 'en', { sensitivity: 'base' });
+  });
+  var roles = S.data.roles || [];
+  var h = '';
+  order.forEach(function(k){
+    var g = groups[k];
+    var match = !q || g.name.toLowerCase().indexOf(q) > -1 || g.list.some(function(p){ return p.name.toLowerCase().indexOf(q) > -1; });
+    if (!match) return;
+    var done = g.list.filter(function(p){ return p.lanyard; }).length, all = done === g.list.length;
+    if (all && $('openOnly').checked && !q) return;
+    h += '<div class="team' + (all ? ' done' : '') + '"><div class="th">' + esc(g.name) + '<span>' + (all ? '✓ ' : '') + done + '/' + g.list.length + '</span></div>';
+    g.list.forEach(function(p){
+      var opts = '<option value="">— Role —</option>' + roles.map(function(r){ return '<option' + (r === p.lanyard ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('');
+      if (p.lanyard && roles.indexOf(p.lanyard) === -1) opts += '<option selected>' + esc(p.lanyard) + '</option>';
+      h += '<div class="p' + (p.lanyard ? ' has' : '') + '"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + esc([p.id, p.role, p.org].filter(Boolean).join(' · ')) + '</div></div>' +
+        '<select data-id="' + esc(p.id) + '" onchange="setRole(this)">' + opts + '</select></div>';
+    });
+    h += '</div>';
+  });
+  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done 🎉' : 'Nobody to show yet.') + '</div>';
+}
+function setRole(sel){
+  var id = sel.getAttribute('data-id'), role = sel.value, p = null;
+  S.data.people.forEach(function(x){ if (x.id === id) p = x; });
+  if (!p) return;
+  var before = p.lanyard; p.lanyard = role; S.busy[id] = true;
+  sel.blur(); drawLan();
+  call({ api: 'lanyard', pin: S.pin, id: id, role: role }).then(function(){
+    delete S.busy[id];
+    toast(role ? 'ok' : 'warn', role ? '✓ ' + p.name + ': ' + role : 'Cleared: ' + p.name);
+    load();
+  }).catch(function(e){
+    delete S.busy[id]; p.lanyard = before; drawLan(); toast('bad', 'Not saved: ' + (e.message || e));
+  });
+}
+$('q').oninput = drawLan; $('hereOnly').onchange = drawLan; $('openOnly').onchange = drawLan;
+
+/* ---- stock ---- */
+function drawStock(){
+  var h = '', cat = '';
+  S.data.items.forEach(function(it){
+    if (it.cat !== cat) { cat = it.cat; h += '<tr><td colspan="4" class="cat">' + esc(cat) + '</td></tr>'; }
+    var cls = '';
+    if (it.start !== '' && it.start > 0) { if (it.left <= 0) cls = 'out'; else if (it.left <= it.start * 0.15) cls = 'low'; }
+    h += '<tr class="' + cls + '"><td>' + esc(it.item) + '</td><td>' + (it.start === '' ? '–' : it.start) + '</td>' +
+      '<td>' + it.given + '<span class="adj"><button onclick="adj(' + it.row + ',-1)">−</button><button onclick="adj(' + it.row + ',1)">+</button></span></td>' +
+      '<td class="left">' + (it.left === '' ? '–' : it.left) + '</td></tr>';
+  });
+  $('stockBody').innerHTML = h || '<tr><td colspan="4" class="muted">The Stock tab is empty.</td></tr>';
+}
+function adj(row, d){
+  S.data.items.forEach(function(it){ if (it.row === row) { it.given += d; if (it.left !== '') it.left -= d; } });
+  drawStock();
+  call({ api: 'adjust', pin: S.pin, row: row, delta: d }).then(load).catch(function(e){ toast('bad', 'Not saved: ' + (e.message || e)); load(); });
+}
+
+/* ---- tabs ---- */
+Array.prototype.forEach.call($('tabs').children, function(b){
+  b.onclick = function(){
+    S.tab = b.getAttribute('data-t');
+    Array.prototype.forEach.call($('tabs').children, function(x){ x.className = x === b ? 'on' : ''; });
+    $('vLan').className = S.tab === 'lan' ? '' : 'hide';
+    $('vStock').className = S.tab === 'stock' ? '' : 'hide';
+  };
+});
+</script>
+</body>
+</html>
