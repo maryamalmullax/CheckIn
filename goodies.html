@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Goody bags & T-shirts</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2328; --muted:#5b6470; --line:#d9dde3;
+    --brand:#2961DA; --ok:#1a7f37; --okbg:#dafbe1; --warn:#9a6700; --warnbg:#fff3c4; --bad:#c4202f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:620px;margin:0 auto;padding:calc(64px + env(safe-area-inset-top)) 16px 60px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  h1{font-size:18px;margin:0}
+  .muted{color:var(--muted);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+  .stats div{background:var(--bg);border-radius:10px;padding:8px 4px}
+  .stats b{display:block;font-size:22px}
+  .sizes{margin-top:10px;font-size:13px;color:var(--muted)}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  .dot.off{background:var(--bad)}
+  .row{display:flex;gap:8px}
+  input,select{font-size:16px;padding:11px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  input{flex:1;min-width:0}
+  input:focus,select:focus{outline:none;border-color:var(--brand)}
+  .tabs{display:flex;gap:6px;margin-top:10px}
+  .tabs button{flex:1;padding:10px 0;font-size:14px;font-weight:600;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .tabs button.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .btn{padding:11px 14px;font-size:15px;font-weight:700;border:0;border-radius:10px;background:var(--brand);color:#fff;cursor:pointer;white-space:nowrap}
+  .btn.ok{background:var(--ok)}
+  .btn.ghost{background:#fff;color:var(--brand);border:2px solid var(--brand)}
+  .btn.small{padding:7px 10px;font-size:13px}
+  .btn:disabled{opacity:.5}
+  .letter{font-weight:800;color:var(--brand);font-size:13px;padding:12px 2px 4px;border-bottom:1px solid var(--line)}
+  .item{display:flex;align-items:center;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line)}
+  .item.done{background:var(--okbg);border-radius:10px;padding:12px 8px;margin:4px 0;border-bottom:0}
+  .who{flex:1;min-width:0}
+  .who .n{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who .m{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .act{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .act select{padding:9px 6px;font-weight:700;width:66px}
+  .tick{font-weight:700;color:var(--ok);font-size:14px;text-align:right}
+  .lock{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .lock .card{width:100%;max-width:360px;text-align:center}
+  .err{color:var(--bad);font-size:14px;min-height:18px;margin-top:8px}
+  .toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));max-width:588px;margin:0 auto;padding:12px 14px;border-radius:12px;color:#fff;font-weight:600;display:none;z-index:20}
+  .toast.show{display:block}
+  .toast.ok{background:var(--ok)}.toast.warn{background:var(--warn)}.toast.bad{background:var(--bad)}
+  .empty{padding:20px 0;text-align:center}
+  @media (max-width:380px){ .act select{width:58px} .btn{padding:10px 10px} }
+</style>
+</head>
+<body>
+
+<div class="lock" id="lock">
+  <div class="card">
+    <h1>Goody bags & T-shirts</h1>
+    <p class="muted">For event staff only. Enter the staff PIN.</p>
+    <div class="row"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN"><button class="btn" id="pinBtn">Start</button></div>
+    <div class="err" id="pinErr"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div><h1>Goody bags & T-shirts</h1><div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Live</span></div></div>
+    <button class="btn ghost small" id="lockBtn">Lock</button>
+  </header>
+
+  <div class="card">
+    <div class="stats">
+      <div><b id="sIn">–</b><span class="muted">Checked in</span></div>
+      <div><b id="sGiven">–</b><span class="muted">Received</span></div>
+      <div><b id="sWait">–</b><span class="muted">Waiting</span></div>
+    </div>
+    <div class="sizes" id="sizes"></div>
+  </div>
+
+  <div class="card">
+    <input id="q" placeholder="Search name, ID or organization" autocomplete="off" style="width:100%">
+    <div class="tabs" id="tabs">
+      <button data-t="wait" class="on">Waiting</button>
+      <button data-t="given">Received</button>
+      <button data-t="all">All</button>
+    </div>
+  </div>
+
+  <div class="card"><div id="list"><div class="muted empty">Loading…</div></div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== SAME WEB APP LINK AS THE SCANNER (ends in /exec) ====== */
+var API_URL = 'https://script.google.com/macros/s/AKfycbyDjUo2pSaPWxgitSELap5fhhxMY2GRSSbU4QcB--8JItU3ktoXxHvfCAzoRUabnH_DrA/exec';
+/* =============================================================== */
+var REFRESH_SECONDS = 5;
+
+var S = { pin: '', tab: 'wait', people: [], sizes: ['S','M','L','XL'], sel: {}, busy: {}, armed: '', timer: 0, loading: false };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function store(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e) { return null; } }
+
+function call(params){
+  var qs = Object.keys(params).map(function(k){ return k + '=' + encodeURIComponent(params[k] == null ? '' : params[k]); }).join('&');
+  return fetch(API_URL + '?' + qs + '&t=' + Date.now(), { redirect: 'follow', credentials: 'omit' })
+    .then(function(r){ return r.json(); })
+    .catch(function(){ throw new Error('No connection. Check the internet.'); })
+    .then(function(j){ if (!j.ok) throw new Error(j.error || 'Error'); return j.data; });
+}
+
+function toast(kind, msg){
+  var t = $('toast'); t.className = 'toast show ' + kind; t.textContent = msg;
+  clearTimeout(toast.h); toast.h = setTimeout(function(){ t.className = 'toast'; }, 3500);
+}
+
+/* ---- PIN ---- */
+function unlock(pin, silent){
+  $('pinErr').textContent = '';
+  call({ api: 'goodies', pin: pin }).then(function(d){
+    S.pin = pin; store('ci_pin', pin);
+    $('lock').style.display = 'none';
+    apply(d);
+    clearInterval(S.timer); S.timer = setInterval(load, REFRESH_SECONDS * 1000);
+  }).catch(function(e){
+    store('ci_pin', null);
+    if (!silent) $('pinErr').textContent = e.message || 'Wrong PIN';
+  });
+}
+$('pinBtn').onclick = function(){ unlock($('pin').value.trim()); };
+$('pin').onkeydown = function(e){ if (e.key === 'Enter') unlock($('pin').value.trim()); };
+$('lockBtn').onclick = function(){ store('ci_pin', null); S.pin = ''; clearInterval(S.timer); $('pin').value = ''; $('lock').style.display = 'flex'; };
+var saved = store('ci_pin'); if (saved) unlock(saved, true);
+
+/* ---- live data ---- */
+function load(){
+  if (!S.pin || S.loading || document.hidden) return;
+  S.loading = true;
+  call({ api: 'goodies', pin: S.pin }).then(function(d){
+    S.loading = false; live(true); apply(d);
+  }).catch(function(e){
+    S.loading = false; live(false);
+    if (/PIN/.test(e.message || '')) $('lockBtn').click();
+  });
+}
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) load(); });
+
+function live(on){
+  $('dot').className = 'dot' + (on ? '' : ' off');
+  $('liveTxt').textContent = on ? 'Live · updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Offline · retrying…';
+}
+
+function apply(d){
+  S.sizes = d.sizes || S.sizes;
+  // keep anything this phone is still saving
+  var mine = {}; S.people.forEach(function(p){ if (S.busy[p.id]) mine[p.id] = p; });
+  S.people = (d.people || []).map(function(p){ return mine[p.id] || p; });
+  live(true);
+  // don't redraw while a size picker is open (it would close it)
+  var a = document.activeElement;
+  if (a && a.tagName === 'SELECT') return;
+  draw();
+}
+
+/* ---- drawing ---- */
+function draw(){
+  var q = $('q').value.trim().toLowerCase();
+  var given = S.people.filter(function(p){ return p.given; });
+  $('sIn').textContent = S.people.length;
+  $('sGiven').textContent = given.length;
+  $('sWait').textContent = S.people.length - given.length;
+  var cnt = {}; given.forEach(function(p){ var s = p.size || '–'; cnt[s] = (cnt[s] || 0) + 1; });
+  $('sizes').innerHTML = given.length ? 'T-shirts handed out: ' + S.sizes.concat(cnt['–'] ? ['–'] : []).map(function(s){ return '<b>' + esc(s) + '</b> ' + (cnt[s] || 0); }).join(' · ') : 'No goody bags handed out yet.';
+
+  var list = S.people.filter(function(p){
+    if (S.tab === 'wait' && p.given) return false;
+    if (S.tab === 'given' && !p.given) return false;
+    if (!q) return true;
+    return (p.name + ' ' + p.id + ' ' + p.org).toLowerCase().indexOf(q) > -1;
+  });
+  if (!list.length) {
+    $('list').innerHTML = '<div class="muted empty">' + (q ? 'No match.' : S.tab === 'wait' ? (S.people.length ? 'Everyone checked in has received a goody bag 🎉' : 'Nobody checked in on Saturday yet. Names appear here as soon as they are scanned.') : 'Nothing here yet.') + '</div>';
+    return;
+  }
+  var h = '', letter = '';
+  list.forEach(function(p){
+    var L = (p.name.charAt(0) || '#').toUpperCase();
+    if (L !== letter) { letter = L; h += '<div class="letter">' + esc(L) + '</div>'; }
+    var meta = [p.id, p.org].filter(Boolean).map(esc).join(' · ');
+    if (p.given) {
+      var armed = S.armed === p.id;
+      h += '<div class="item done"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + meta + '</div></div>' +
+        '<div class="act"><div class="tick">✓ ' + esc(p.size || '–') + '<div class="muted">' + esc(p.given) + '</div></div>' +
+        '<button class="btn ghost small" onclick="undo(\'' + esc(p.id) + '\')">' + (armed ? 'Tap again' : 'Undo') + '</button></div></div>';
+    } else {
+      var cur = S.sel[p.id] || (S.sizes.indexOf(p.shirt) > -1 ? p.shirt : '');
+      var opts = '<option value=""' + (cur ? '' : ' selected') + '>Size</option>' + S.sizes.map(function(s){ return '<option' + (s === cur ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('');
+      h += '<div class="item"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + meta + (p.shirt ? ' · registered: ' + esc(p.shirt) : '') + '</div></div>' +
+        '<div class="act"><select onchange="pickSize(\'' + esc(p.id) + '\', this.value)">' + opts + '</select>' +
+        '<button class="btn ok" ' + (S.busy[p.id] ? 'disabled' : '') + ' onclick="give(\'' + esc(p.id) + '\')">' + (S.busy[p.id] ? 'Saving…' : 'Confirm') + '</button></div></div>';
+    }
+  });
+  $('list').innerHTML = h;
+}
+
+function pickSize(id, v){ S.sel[id] = v; }
+function find(id){ for (var i = 0; i < S.people.length; i++) if (S.people[i].id === id) return S.people[i]; return null; }
+
+function give(id){
+  var p = find(id); if (!p || S.busy[id]) return;
+  var size = S.sel[id] || (S.sizes.indexOf(p.shirt) > -1 ? p.shirt : '');
+  if (!size) { toast('warn', 'Choose a T-shirt size for ' + p.name + ' first.'); return; }
+  S.busy[id] = true; draw();
+  call({ api: 'give', pin: S.pin, id: id, size: size }).then(function(r){
+    delete S.busy[id]; delete S.sel[id];
+    p.given = r.given; p.size = r.size;
+    if (r.already) toast('warn', p.name + ' already received a goody bag at ' + r.given + ' (size ' + (r.size || '–') + ').');
+    else toast('ok', '✓ ' + p.name + ': goody bag + T-shirt ' + r.size);
+    draw();
+  }).catch(function(e){
+    delete S.busy[id]; draw(); toast('bad', 'Not saved: ' + (e.message || e));
+  });
+}
+
+function undo(id){
+  var p = find(id); if (!p) return;
+  if (S.armed !== id) { S.armed = id; draw(); setTimeout(function(){ if (S.armed === id) { S.armed = ''; draw(); } }, 4000); return; }
+  S.armed = ''; S.busy[id] = true;
+  call({ api: 'give', pin: S.pin, id: id, undo: '1' }).then(function(){
+    delete S.busy[id]; p.given = ''; p.size = ''; draw(); toast('warn', 'Undone: ' + p.name);
+  }).catch(function(e){ delete S.busy[id]; toast('bad', 'Not saved: ' + (e.message || e)); });
+}
+
+$('q').oninput = draw;
+Array.prototype.forEach.call($('tabs').children, function(b){
+  b.onclick = function(){
+    S.tab = b.getAttribute('data-t');
+    Array.prototype.forEach.call($('tabs').children, function(x){ x.className = x === b ? 'on' : ''; });
+    draw();
+  };
+});
+</script>
+</body>
+</html>
