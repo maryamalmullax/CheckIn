@@ -51,6 +51,25 @@
   .toast.show{display:block}
   .toast.ok{background:var(--ok)}.toast.warn{background:var(--warn)}.toast.bad{background:var(--bad)}
   .empty{padding:20px 0;text-align:center}
+  .hide{display:none}
+  .mtabs{display:flex;gap:6px}
+  .mtabs button{flex:1;padding:11px 0;font-size:15px;font-weight:700;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .mtabs button.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .chk{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px}
+  .chk input{flex:none;width:20px;height:20px}
+  .bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--ok)}
+  .team{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:#fff}
+  .team.done{border-color:var(--ok)}
+  .th{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f1f4fa;font-weight:800}
+  .team.done .th{background:var(--okbg)}
+  .th span{font-weight:700;font-size:13px;color:var(--muted)}
+  .team.done .th span{color:var(--ok)}
+  .p{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+  .p.has{background:#f6fff8}
+  .p select{width:150px;padding:9px 8px;font-weight:700}
+  .p.has select{border-color:var(--ok);color:var(--ok)}
+  @media (max-width:380px){ .p select{width:124px} }
   @media (max-width:380px){ .act select{width:58px} .btn{padding:10px 10px} }
 </style>
 </head>
@@ -67,10 +86,16 @@
 
 <div class="wrap">
   <header>
-    <div><h1>Goody bags & T-shirts</h1><div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Live</span></div></div>
+    <div><h1 id="pageTitle">Goody bags & T-shirts</h1><div class="live"><span class="dot" id="dot"></span><span id="liveTxt">Live</span></div></div>
     <button class="btn ghost small" id="lockBtn">Lock</button>
   </header>
 
+  <div class="card"><div class="mtabs" id="mtabs">
+    <button data-v="bags" class="on">🎁 Goody bags</button>
+    <button data-v="lan">🏷️ Lanyards</button>
+  </div></div>
+
+  <div id="vBags">
   <div class="card">
     <div class="stats">
       <div><b id="sIn">–</b><span class="muted">Checked in</span></div>
@@ -90,6 +115,18 @@
   </div>
 
   <div class="card"><div id="list"><div class="muted empty">Loading…</div></div></div>
+  </div>
+
+  <div id="vLan" class="hide">
+    <div class="card">
+      <div class="row"><b id="lanCount" style="font-size:18px">–</b><span class="muted">people have a lanyard</span></div>
+      <div class="bar"><i id="lanBar" style="width:0"></i></div>
+      <input id="lq" placeholder="Search team or name" autocomplete="off" style="width:100%;margin-top:12px">
+      <label class="chk"><input type="checkbox" id="hereOnly" checked> <span id="hereLbl">Only people checked in on Saturday</span></label>
+      <label class="chk"><input type="checkbox" id="openOnly"> Hide teams that are done</label>
+    </div>
+    <div id="teams"><div class="card muted empty">Loading…</div></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -100,7 +137,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyDjUo2pSaPWxgitSELap5fhh
 /* =============================================================== */
 var REFRESH_SECONDS = 5;
 
-var S = { pin: '', tab: 'wait', people: [], sizes: ['S','M','L','XL'], sel: {}, busy: {}, armed: '', timer: 0, loading: false };
+var S = { view: 'bags', lan: { roles: [], people: [] }, lanBusy: {}, pin: '', tab: 'wait', people: [], sizes: ['S','M','L','XL'], sel: {}, busy: {}, armed: '', timer: 0, loading: false };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -141,8 +178,11 @@ var saved = store('ci_pin'); if (saved) unlock(saved, true);
 function load(){
   if (!S.pin || S.loading || document.hidden) return;
   S.loading = true;
-  call({ api: 'goodies', pin: S.pin }).then(function(d){
-    S.loading = false; live(true); apply(d);
+  var v = S.view;
+  call({ api: v === 'lan' ? 'lanyards' : 'goodies', pin: S.pin }).then(function(d){
+    S.loading = false; live(true);
+    if (v !== S.view) return;
+    if (v === 'lan') applyLan(d); else apply(d);
   }).catch(function(e){
     S.loading = false; live(false);
     if (/PIN/.test(e.message || '')) $('lockBtn').click();
@@ -236,6 +276,79 @@ function undo(id){
   }).catch(function(e){ delete S.busy[id]; toast('bad', 'Not saved: ' + (e.message || e)); });
 }
 
+/* ---- lanyards ---- */
+function applyLan(d){
+  var mine = {}; S.lan.people.forEach(function(p){ if (S.lanBusy[p.id]) mine[p.id] = p.lanyard; });
+  d.people.forEach(function(p){ if (p.id in mine) p.lanyard = mine[p.id]; });
+  S.lan = d;
+  if (d.dayNames && d.dayNames.length) $('hereLbl').textContent = 'Only people checked in on ' + d.dayNames.join(' / ');
+  var a = document.activeElement;
+  if (a && a.tagName === 'SELECT') return;
+  drawLan();
+}
+function drawLan(){
+  var q = $('lq').value.trim().toLowerCase();
+  var people = S.lan.people.filter(function(p){ return !$('hereOnly').checked || p.here; });
+  var tagged = people.filter(function(p){ return p.lanyard; }).length;
+  $('lanCount').textContent = tagged + ' / ' + people.length;
+  $('lanBar').style.width = people.length ? Math.round(tagged * 100 / people.length) + '%' : '0';
+  var groups = {}, order = [];
+  people.forEach(function(p){
+    var key = (p.team || '').toLowerCase().replace(/\s+/g, ' ').trim() || '~';
+    if (!groups[key]) { groups[key] = { name: p.team || 'No team name', list: [] }; order.push(key); }
+    groups[key].list.push(p);
+  });
+  order.sort(function(a, b){
+    if (a === '~') return 1; if (b === '~') return -1;
+    return groups[a].name.localeCompare(groups[b].name, 'en', { sensitivity: 'base' });
+  });
+  var roles = S.lan.roles || [], h = '';
+  order.forEach(function(k){
+    var g = groups[k];
+    var match = !q || g.name.toLowerCase().indexOf(q) > -1 || g.list.some(function(p){ return p.name.toLowerCase().indexOf(q) > -1; });
+    if (!match) return;
+    var done = g.list.filter(function(p){ return p.lanyard; }).length, all = done === g.list.length;
+    if (all && $('openOnly').checked && !q) return;
+    h += '<div class="team' + (all ? ' done' : '') + '"><div class="th">' + esc(g.name) + '<span>' + (all ? '✓ ' : '') + done + '/' + g.list.length + '</span></div>';
+    g.list.forEach(function(p){
+      var opts = '<option value="">— Role —</option>' + roles.map(function(r){ return '<option' + (r === p.lanyard ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('');
+      if (p.lanyard && roles.indexOf(p.lanyard) === -1) opts += '<option selected>' + esc(p.lanyard) + '</option>';
+      h += '<div class="p' + (p.lanyard ? ' has' : '') + '"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + esc([p.id, p.role, p.org].filter(Boolean).join(' · ')) + '</div></div>' +
+        '<select data-id="' + esc(p.id) + '" onchange="setRole(this)">' + opts + '</select></div>';
+    });
+    h += '</div>';
+  });
+  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done 🎉' : 'Nobody checked in yet.') + '</div>';
+}
+function setRole(sel){
+  var id = sel.getAttribute('data-id'), role = sel.value, p = null;
+  S.lan.people.forEach(function(x){ if (x.id === id) p = x; });
+  if (!p) return;
+  var before = p.lanyard; p.lanyard = role; S.lanBusy[id] = true;
+  sel.blur(); drawLan();
+  call({ api: 'setlan', pin: S.pin, id: id, role: role }).then(function(){
+    delete S.lanBusy[id];
+    toast(role ? 'ok' : 'warn', role ? '✓ ' + p.name + ': ' + role : 'Cleared: ' + p.name);
+  }).catch(function(e){
+    delete S.lanBusy[id]; p.lanyard = before; drawLan(); toast('bad', 'Not saved: ' + (e.message || e));
+  });
+}
+$('lq').oninput = drawLan; $('hereOnly').onchange = drawLan; $('openOnly').onchange = drawLan;
+
+/* ---- main tabs ---- */
+Array.prototype.forEach.call($('mtabs').children, function(b){
+  b.onclick = function(){
+    S.view = b.getAttribute('data-v');
+    Array.prototype.forEach.call($('mtabs').children, function(x){ x.className = x === b ? 'on' : ''; });
+    $('vBags').className = S.view === 'bags' ? '' : 'hide';
+    $('vLan').className = S.view === 'lan' ? '' : 'hide';
+    $('pageTitle').textContent = S.view === 'lan' ? 'Lanyards' : 'Goody bags & T-shirts';
+    store('gd_view', S.view);
+    S.loading = false; load();
+  };
+});
+if (store('gd_view') === 'lan') setTimeout(function(){ $('mtabs').children[1].click(); }, 0);
+
 $('q').oninput = draw;
 Array.prototype.forEach.call($('tabs').children, function(b){
   b.onclick = function(){
@@ -247,3 +360,6 @@ Array.prototype.forEach.call($('tabs').children, function(b){
 </script>
 </body>
 </html>
+
+
+
