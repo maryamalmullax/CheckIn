@@ -91,8 +91,9 @@
   </header>
 
   <div class="card"><div class="mtabs" id="mtabs">
-    <button data-v="bags" class="on">🎁 Goody bags</button>
-    <button data-v="lan">🏷️ Lanyards</button>
+    <button data-v="bags" class="on">Goody bags</button>
+    <button data-v="snack">Snack bags</button>
+    <button data-v="lan">Lanyards</button>
   </div></div>
 
   <div id="vBags">
@@ -117,6 +118,26 @@
   <div class="card"><div id="list"><div class="muted empty">Loading…</div></div></div>
   </div>
 
+  <div id="vSnack" class="hide">
+    <div class="card">
+      <div class="stats">
+        <div><b id="nIn">–</b><span class="muted">Checked in</span></div>
+        <div><b id="nGiven">–</b><span class="muted">Received</span></div>
+        <div><b id="nWait">–</b><span class="muted">Waiting</span></div>
+      </div>
+      <div class="sizes" id="nStock"></div>
+    </div>
+    <div class="card">
+      <input id="nq" placeholder="Search name, ID or organization" autocomplete="off" style="width:100%">
+      <div class="tabs" id="ntabs">
+        <button data-t="wait" class="on">Waiting</button>
+        <button data-t="given">Received</button>
+        <button data-t="all">All</button>
+      </div>
+    </div>
+    <div class="card"><div id="nlist"><div class="muted empty">Loading…</div></div></div>
+  </div>
+
   <div id="vLan" class="hide">
     <div class="card">
       <div class="row"><b id="lanCount" style="font-size:18px">–</b><span class="muted">people have a lanyard</span></div>
@@ -137,7 +158,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyDjUo2pSaPWxgitSELap5fhh
 /* =============================================================== */
 var REFRESH_SECONDS = 5;
 
-var S = { view: 'bags', lan: { roles: [], people: [] }, lanBusy: {}, pin: '', tab: 'wait', people: [], sizes: ['S','M','L','XL'], sel: {}, busy: {}, armed: '', timer: 0, loading: false };
+var S = { view: 'bags', sn: { people: [], stock: null }, snTab: 'wait', snBusy: {}, snArmed: '', lan: { roles: [], people: [] }, lanBusy: {}, pin: '', tab: 'wait', people: [], sizes: ['S','M','L','XL'], sel: {}, busy: {}, armed: '', timer: 0, loading: false };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -179,10 +200,10 @@ function load(){
   if (!S.pin || S.loading || document.hidden) return;
   S.loading = true;
   var v = S.view;
-  call({ api: v === 'lan' ? 'lanyards' : 'goodies', pin: S.pin }).then(function(d){
+  call({ api: v === 'lan' ? 'lanyards' : v === 'snack' ? 'snacks' : 'goodies', pin: S.pin }).then(function(d){
     S.loading = false; live(true);
     if (v !== S.view) return;
-    if (v === 'lan') applyLan(d); else apply(d);
+    if (v === 'lan') applyLan(d); else if (v === 'snack') applySnack(d); else apply(d);
   }).catch(function(e){
     S.loading = false; live(false);
     if (/PIN/.test(e.message || '')) $('lockBtn').click();
@@ -224,7 +245,7 @@ function draw(){
     return (p.name + ' ' + p.id + ' ' + p.org).toLowerCase().indexOf(q) > -1;
   });
   if (!list.length) {
-    $('list').innerHTML = '<div class="muted empty">' + (q ? 'No match.' : S.tab === 'wait' ? (S.people.length ? 'Everyone checked in has received a goody bag 🎉' : 'Nobody checked in on Saturday yet. Names appear here as soon as they are scanned.') : 'Nothing here yet.') + '</div>';
+    $('list').innerHTML = '<div class="muted empty">' + (q ? 'No match.' : S.tab === 'wait' ? (S.people.length ? 'Everyone checked in has received a goody bag' : 'Nobody checked in on Saturday yet. Names appear here as soon as they are scanned.') : 'Nothing here yet.') + '</div>';
     return;
   }
   var h = '', letter = '';
@@ -318,7 +339,7 @@ function drawLan(){
     });
     h += '</div>';
   });
-  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done 🎉' : 'Nobody checked in yet.') + '</div>';
+  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done' : 'Nobody checked in yet.') + '</div>';
 }
 function setRole(sel){
   var id = sel.getAttribute('data-id'), role = sel.value, p = null;
@@ -342,12 +363,77 @@ Array.prototype.forEach.call($('mtabs').children, function(b){
     Array.prototype.forEach.call($('mtabs').children, function(x){ x.className = x === b ? 'on' : ''; });
     $('vBags').className = S.view === 'bags' ? '' : 'hide';
     $('vLan').className = S.view === 'lan' ? '' : 'hide';
-    $('pageTitle').textContent = S.view === 'lan' ? 'Lanyards' : 'Goody bags & T-shirts';
+    $('vSnack').className = S.view === 'snack' ? '' : 'hide';
+    $('pageTitle').textContent = S.view === 'lan' ? 'Lanyards' : S.view === 'snack' ? 'Snack bags' : 'Goody bags & T-shirts';
     store('gd_view', S.view);
     S.loading = false; load();
   };
 });
-if (store('gd_view') === 'lan') setTimeout(function(){ $('mtabs').children[1].click(); }, 0);
+(function(){ var v = store('gd_view'); var i = v === 'snack' ? 1 : v === 'lan' ? 2 : -1; if (i > -1) setTimeout(function(){ $('mtabs').children[i].click(); }, 0); })();
+
+/* ---- snack bags ---- */
+function applySnack(d){
+  var mine = {}; S.sn.people.forEach(function(p){ if (S.snBusy[p.id]) mine[p.id] = p; });
+  d.people = d.people.map(function(p){ return mine[p.id] || p; });
+  S.sn = d; drawSnack();
+}
+function drawSnack(){
+  var q = $('nq').value.trim().toLowerCase(), ppl = S.sn.people;
+  var given = ppl.filter(function(p){ return p.given; }).length;
+  $('nIn').textContent = ppl.length; $('nGiven').textContent = given; $('nWait').textContent = ppl.length - given;
+  var st = S.sn.stock;
+  $('nStock').innerHTML = st ? esc(st.item) + ' stock: <b>' + (st.left === '' ? '–' : st.left) + '</b> left of ' + (st.start === '' ? '–' : st.start) : '';
+  var list = ppl.filter(function(p){
+    if (S.snTab === 'wait' && p.given) return false;
+    if (S.snTab === 'given' && !p.given) return false;
+    return !q || (p.name + ' ' + p.id + ' ' + p.org).toLowerCase().indexOf(q) > -1;
+  });
+  if (!list.length) { $('nlist').innerHTML = '<div class="muted empty">' + (q ? 'No match.' : S.snTab === 'wait' ? (ppl.length ? 'Everyone checked in has received a snack bag.' : 'Nobody checked in on Saturday yet.') : 'Nothing here yet.') + '</div>'; return; }
+  var h = '', letter = '';
+  list.forEach(function(p){
+    var L = (p.name.charAt(0) || '#').toUpperCase();
+    if (L !== letter) { letter = L; h += '<div class="letter">' + esc(L) + '</div>'; }
+    var meta = [p.id, p.org].filter(Boolean).map(esc).join(' · ');
+    if (p.given) {
+      h += '<div class="item done"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + meta + '</div></div>' +
+        '<div class="act"><div class="tick">✓<div class="muted">' + esc(p.given) + '</div></div>' +
+        '<button class="btn ghost small" onclick="snackUndo(\'' + esc(p.id) + '\')">' + (S.snArmed === p.id ? 'Tap again' : 'Undo') + '</button></div></div>';
+    } else {
+      h += '<div class="item"><div class="who"><div class="n">' + esc(p.name) + '</div><div class="m">' + meta + '</div></div>' +
+        '<div class="act"><button class="btn ok" ' + (S.snBusy[p.id] ? 'disabled' : '') + ' onclick="snackGive(\'' + esc(p.id) + '\')">' + (S.snBusy[p.id] ? 'Saving…' : 'Confirm') + '</button></div></div>';
+    }
+  });
+  $('nlist').innerHTML = h;
+}
+function snFind(id){ for (var i = 0; i < S.sn.people.length; i++) if (S.sn.people[i].id === id) return S.sn.people[i]; return null; }
+function snackGive(id){
+  var p = snFind(id); if (!p || S.snBusy[id]) return;
+  S.snBusy[id] = true; drawSnack();
+  call({ api: 'snack', pin: S.pin, id: id }).then(function(r){
+    delete S.snBusy[id]; p.given = r.given;
+    if (S.sn.stock && !r.already) { S.sn.stock.given++; if (S.sn.stock.left !== '') S.sn.stock.left--; }
+    toast(r.already ? 'warn' : 'ok', r.already ? p.name + ' already received a snack bag at ' + r.given + '.' : '✓ ' + p.name + ': snack bag');
+    drawSnack();
+  }).catch(function(e){ delete S.snBusy[id]; drawSnack(); toast('bad', 'Not saved: ' + (e.message || e)); });
+}
+function snackUndo(id){
+  var p = snFind(id); if (!p) return;
+  if (S.snArmed !== id) { S.snArmed = id; drawSnack(); setTimeout(function(){ if (S.snArmed === id) { S.snArmed = ''; drawSnack(); } }, 4000); return; }
+  S.snArmed = ''; S.snBusy[id] = true;
+  call({ api: 'snack', pin: S.pin, id: id, undo: '1' }).then(function(){
+    delete S.snBusy[id]; p.given = '';
+    if (S.sn.stock) { S.sn.stock.given--; if (S.sn.stock.left !== '') S.sn.stock.left++; }
+    drawSnack(); toast('warn', 'Undone: ' + p.name);
+  }).catch(function(e){ delete S.snBusy[id]; toast('bad', 'Not saved: ' + (e.message || e)); });
+}
+$('nq').oninput = drawSnack;
+Array.prototype.forEach.call($('ntabs').children, function(b){
+  b.onclick = function(){
+    S.snTab = b.getAttribute('data-t');
+    Array.prototype.forEach.call($('ntabs').children, function(x){ x.className = x === b ? 'on' : ''; });
+    drawSnack();
+  };
+});
 
 $('q').oninput = draw;
 Array.prototype.forEach.call($('tabs').children, function(b){
