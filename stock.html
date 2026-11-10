@@ -85,13 +85,13 @@
     <button class="btn ghost small" id="lockBtn">Lock</button>
   </header>
 
-  <div class="card"><div class="tabs" id="tabs">
-    <button data-t="lan" class="on">Lanyards</button>
-    <button data-t="stock">Stock</button>
+  <div class="hide"><div class="tabs" id="tabs">
+    <button data-t="lan">Lanyards</button>
+    <button data-t="stock" class="on">Stock</button>
   </div></div>
 
   <!-- Lanyards -->
-  <div id="vLan">
+  <div id="vLan" class="hide">
     <div class="card">
       <div class="row"><b id="lanCount" style="font-size:18px">–</b><span class="muted" id="lanTxt"></span></div>
       <div class="bar"><i id="lanBar" style="width:0"></i></div>
@@ -103,7 +103,7 @@
   </div>
 
   <!-- Stock -->
-  <div id="vStock" class="hide">
+  <div id="vStock">
     <div class="card">
       <h2>Stock</h2>
       <div class="muted" style="margin-bottom:6px">Start quantities come from the <b>Stock</b> tab in the Sheet. Given updates live. Use − / + for anything handed out outside the lists.</div>
@@ -120,7 +120,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyDjUo2pSaPWxgitSELap5fhh
 /* =============================================================== */
 var REFRESH_SECONDS = 6;
 
-var S = { pin: '', tab: 'lan', data: { items: [], roles: [], people: [] }, busy: {}, timer: 0, loading: false };
+var S = { pin: '', tab: 'stock', data: { items: [], roles: [], people: [] }, busy: {}, timer: 0, loading: false };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -264,3 +264,6 @@ Array.prototype.forEach.call($('tabs').children, function(b){
 </script>
 </body>
 </html>
+
+
+
