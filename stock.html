@@ -86,8 +86,8 @@
   </header>
 
   <div class="card"><div class="tabs" id="tabs">
-    <button data-t="lan" class="on">🏷️ Lanyards</button>
-    <button data-t="stock">📦 Stock</button>
+    <button data-t="lan" class="on">Lanyards</button>
+    <button data-t="stock">Stock</button>
   </div></div>
 
   <!-- Lanyards -->
@@ -215,7 +215,7 @@ function drawLan(){
     });
     h += '</div>';
   });
-  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done 🎉' : 'Nobody to show yet.') + '</div>';
+  $('teams').innerHTML = h || '<div class="card muted empty">' + (q ? 'No match.' : people.length ? 'All teams are done' : 'Nobody to show yet.') + '</div>';
 }
 function setRole(sel){
   var id = sel.getAttribute('data-id'), role = sel.value, p = null;
